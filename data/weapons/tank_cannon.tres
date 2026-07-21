@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 display_name = "Spring-Loaded Tank Cannon"
-damage = 130.0
+damage = 160.0
 fire_rate = 0.7
 magazine_size = 1
 reload_time = 1.3
@@ -16,5 +16,5 @@ automatic = false
 pellets = 1
 projectile_color = Color(1.0, 0.6, 0.2, 1.0)
 sound = "explosion"
-explosive_radius = 5.0
+explosive_radius = 6.5
 recoil = 4.0

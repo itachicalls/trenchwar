@@ -51,12 +51,13 @@ func _ready() -> void:
 	core.position.y = 1.6
 	add_child(core)
 	# Blinking warning beacon on top.
-	_beacon = OmniLight3D.new()
-	_beacon.light_color = Color(0.3, 0.9, 1.0)
-	_beacon.light_energy = 1.2
-	_beacon.omni_range = 8.0
-	_beacon.position.y = 3.4
-	add_child(_beacon)
+	if not Game.low_gfx():
+		_beacon = OmniLight3D.new()
+		_beacon.light_color = Color(0.3, 0.9, 1.0)
+		_beacon.light_energy = 1.2
+		_beacon.omni_range = 8.0
+		_beacon.position.y = 3.4
+		add_child(_beacon)
 	var beacon_bulb := MeshInstance3D.new()
 	var bulb := SphereMesh.new()
 	bulb.radius = 0.18

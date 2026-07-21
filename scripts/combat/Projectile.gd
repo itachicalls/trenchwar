@@ -83,6 +83,8 @@ func _is_friendly(collider: Object) -> bool:
 	return collider is CollisionObject3D and faction != null and "faction" in collider \
 		and collider.faction != null and not faction.hostile_to(collider.faction)
 
+var _pierced := 0
+
 func _on_hit(collider: Object, point: Vector3) -> void:
 	if data.explosive_radius > 0.0:
 		_explode(point)
@@ -90,10 +92,19 @@ func _on_hit(collider: Object, point: Vector3) -> void:
 		_apply_damage(collider, data.damage * damage_scale)
 		Fx.impact(self, point, data.projectile_color)
 		Sfx.play_at("hit", point, -8.0)
+		# Sniper-style rounds drill straight through soft targets and keep
+		# flying — walls (StaticBody3D) always stop them.
+		if _pierced < data.pierce and collider is CollisionObject3D and not collider is StaticBody3D:
+			_pierced += 1
+			_exclude_rid((collider as CollisionObject3D).get_rid())
+			return
 	queue_free()
 
 func _explode(point: Vector3) -> void:
-	Fx.explosion(self, point, data.explosive_radius)
+	if data.explosive_radius >= 3.5:
+		Fx.ordnance_explosion(self, point, data.explosive_radius)
+	else:
+		Fx.explosion(self, point, data.explosive_radius)
 	var params := PhysicsShapeQueryParameters3D.new()
 	var sphere := SphereShape3D.new()
 	sphere.radius = data.explosive_radius
@@ -105,6 +116,11 @@ func _explode(point: Vector3) -> void:
 		if body is Node3D:
 			var falloff: float = 1.0 - clampf(point.distance_to(body.global_position) / data.explosive_radius, 0.0, 0.85)
 			_apply_damage(body, data.damage * damage_scale * falloff)
+			# Blast wave hurls survivors away from ground zero.
+			if body is CharacterBody3D and body != shooter:
+				var away: Vector3 = body.global_position - point
+				away.y = 0.0
+				body.velocity += away.normalized() * 10.0 * falloff + Vector3.UP * 7.0 * falloff
 
 func _apply_damage(target: Object, amount: float) -> void:
 	if target == null or not target.has_method("take_damage"):
@@ -113,6 +129,11 @@ func _apply_damage(target: Object, amount: float) -> void:
 	if faction != null and "faction" in target and target.faction != null and not faction.hostile_to(target.faction):
 		return
 	target.take_damage(amount, shooter)
+	# Style damage: heavy rubber-band/foam rounds slap toys backwards.
+	if data.knockback > 0.0 and target is CharacterBody3D and target != shooter:
+		var dir := velocity.normalized()
+		dir.y = 0.0
+		target.velocity += dir * data.knockback + Vector3.UP * data.knockback * 0.3
 	if is_instance_valid(shooter) and shooter == Game.player:
 		var killed: bool = target.has_method("is_dead") and target.is_dead()
 		Events.hit_confirmed.emit(killed)

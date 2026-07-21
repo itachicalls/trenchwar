@@ -25,12 +25,13 @@ func _ready() -> void:
 	rig.scale = Vector3.ONE * 0.8
 	add_child(rig)
 	var gold := Color(1.0, 0.85, 0.45)
-	var light := OmniLight3D.new()
-	light.light_color = gold
-	light.light_energy = 0.7
-	light.omni_range = 3.0
-	light.position.y = 0.8
-	add_child(light)
+	if not Game.low_gfx():
+		var light := OmniLight3D.new()
+		light.light_color = gold
+		light.light_energy = 0.7
+		light.omni_range = 3.0
+		light.position.y = 0.8
+		add_child(light)
 	# Golden beacon beam + halo ring so hidden toys glint from across the room.
 	var beam := MeshInstance3D.new()
 	var cyl := CylinderMesh.new()

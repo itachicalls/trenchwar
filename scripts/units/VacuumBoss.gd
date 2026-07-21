@@ -222,18 +222,26 @@ func _physics_process(delta: float) -> void:
 	if _eye_mat != null:
 		_eye_mat.emission_energy_multiplier = 2.2 + sin(Time.get_ticks_msec() * 0.008) * 0.8 + (3.0 if _windup > 0.0 else 0.0)
 
-## Grinding against furniture is the #1 "erratic" read — detect no-progress
-## and pick a fresh sweep goal instead of spinning in place.
+## Grinding against furniture is the #1 "erratic" read — detect no-progress,
+## back straight out of whatever it's wedged against, then pick a fresh goal.
+var _reverse_timer := 0.0
 func _detect_stuck(delta: float) -> void:
 	if _charging or _windup > 0.0:
+		return
+	if _reverse_timer > 0.0:
+		_reverse_timer -= delta
+		var back := global_transform.basis.z   # +Z = the boss's rear
+		velocity.x = back.x * 4.0
+		velocity.z = back.z * 4.0
 		return
 	if global_position.distance_to(_last_pos) < 0.4 * delta * 60.0 * 0.016:
 		_stuck_time += delta
 	else:
 		_stuck_time = 0.0
 	_last_pos = global_position
-	if _stuck_time > 1.4:
+	if _stuck_time > 1.2:
 		_stuck_time = 0.0
+		_reverse_timer = 0.9
 		_pick_sweep_goal()
 
 func _do_sweep(delta: float) -> void:
@@ -313,7 +321,14 @@ func _face(dir: Vector3, delta: float, turn: float) -> void:
 
 func _pick_sweep_goal() -> void:
 	_sweep_timer = 8.0
-	_sweep_goal = Vector3(randf_range(-45, 45), 0, randf_range(-30, 35))
+	var want := Vector3(randf_range(-45, 45), 0, randf_range(-30, 35))
+	# Snap onto the navmesh so goals never sit inside couches or walls —
+	# unreachable goals were how it got stuck grinding furniture forever.
+	if is_inside_tree():
+		var map := get_world_3d().navigation_map
+		if NavigationServer3D.map_get_iteration_id(map) > 0:
+			want = NavigationServer3D.map_get_closest_point(map, want)
+	_sweep_goal = want
 
 ## Drag anything in the front cone toward the intake.
 func _apply_suction(delta: float) -> void:

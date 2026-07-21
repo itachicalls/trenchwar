@@ -101,9 +101,20 @@ func _ready() -> void:
 		get_viewport().msaa_3d = Viewport.MSAA_2X
 		get_viewport().positional_shadow_atlas_size = 2048
 		RenderingServer.directional_shadow_atlas_set_size(2048, true)
+		# Render 3D at 85% and let the browser upscale — free ~30% GPU time,
+		# invisible under the toy art style's soft shapes.
+		get_viewport().scaling_3d_scale = 0.85
+	if Game.is_touch():
+		# Phone GPUs: no MSAA, small shadow atlases, 75% internal resolution.
+		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+		get_viewport().positional_shadow_atlas_size = 1024
+		RenderingServer.directional_shadow_atlas_set_size(1024, true)
+		get_viewport().scaling_3d_scale = 0.75
 	# Phones/tablets get on-screen controls; it hides itself outside gameplay.
 	if Game.is_touch():
 		add_child(preload("res://scripts/ui/TouchControls.gd").new())
+		_apply_mobile_ui_scale()
+		get_tree().root.size_changed.connect(_apply_mobile_ui_scale)
 	# Screen fader on its own top layer, always available.
 	var fade_layer := CanvasLayer.new()
 	fade_layer.layer = 99
@@ -213,6 +224,21 @@ func _fade(to_alpha: float, duration: float = 0.35) -> void:
 	var t := create_tween()
 	t.tween_property(fader, "color:a", to_alpha, duration)
 	await t.finished
+
+## MOBILE: the 1600x900 canvas stretched with aspect=expand means a phone
+## screen spans THOUSANDS of design units — text renders a few real pixels
+## tall and "centered" content sits in a sea of empty canvas. Scale the whole
+## UI so the short screen edge always spans ~700 design units: menus, HUD and
+## touch controls all become thumb-sized and readable.
+func _apply_mobile_ui_scale() -> void:
+	var win := Vector2(DisplayServer.window_get_size())
+	if win.x <= 0.0 or win.y <= 0.0:
+		return
+	var base := minf(win.x / 1600.0, win.y / 900.0)
+	if base <= 0.0:
+		return
+	var factor := clampf((minf(win.x, win.y) / 700.0) / base, 1.0, 4.0)
+	get_tree().root.content_scale_factor = factor
 
 # ------------------------------------------------------------------ MENUS
 
@@ -469,6 +495,9 @@ func _show_briefing(mission_id: String) -> void:
 	_subtitle(box, TIPS[randi() % TIPS.size()], 14, UiTheme.CYAN)
 	_spacer(box, 22)
 	_button(box, "DEPLOY", func():
+		# Capture NOW, inside the click gesture — browsers refuse pointer lock
+		# once the fade delays it, leaving the camera frozen until first click.
+		Game.capture_mouse()
 		await _fade(1.0, 0.4)
 		_deploy_mission(mission_id)
 		await _fade(0.0, 0.6), UiTheme.GREEN)
@@ -522,6 +551,7 @@ func _show_pause_menu() -> void:
 	_button(box, "ARMORY", func(): _show_store(_show_pause_menu))
 	_button(box, "RESTART MISSION", func():
 		get_tree().paused = false
+		Game.capture_mouse()   # inside the click gesture (web pointer lock)
 		await _fade(1.0, 0.3)
 		_deploy_mission(current_mission_id)
 		await _fade(0.0, 0.5))
@@ -625,14 +655,18 @@ func _skin_row(box: VBoxContainer, skin: Dictionary) -> void:
 ## Miniature 3D viewport rendering the real (tinted) soldier model.
 func _skin_portrait(skin: Dictionary) -> Control:
 	var container := SubViewportContainer.new()
+	# stretch_shrink=1 with the vp pre-sized to the slot: the container's
+	# minimum size is derived from the viewport, so a mismatched vp.size
+	# stretched the slot wide and shoved the soldier off to the left.
 	container.stretch = true
 	container.custom_minimum_size = Vector2(84, 84)
 	container.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	container.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	var vp := SubViewport.new()
 	vp.own_world_3d = true
 	vp.world_3d = World3D.new()
 	vp.transparent_bg = true
-	vp.size = Vector2i(168, 168)
+	vp.size = Vector2i(84, 84)
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	container.add_child(vp)
 
@@ -657,8 +691,12 @@ func _skin_portrait(skin: Dictionary) -> Control:
 	var cam := Camera3D.new()
 	cam.fov = 32.0
 	vp.add_child(cam)
-	cam.position = Vector3(0, 1.15, -2.9)
-	cam.look_at(Vector3(0, 0.72, 0), Vector3.UP)
+	# look_at() FAILS outside the tree (this whole subtree is built before the
+	# row is added) — the camera silently kept its default orientation and the
+	# portraits rendered garbage. Build the aim transform by hand instead.
+	var cam_pos := Vector3(0, 1.5, -4.4)
+	cam.transform = Transform3D(
+		Basis.looking_at(Vector3(0, 1.1, 0) - cam_pos, Vector3.UP), cam_pos)
 	# Tweens can only be created inside the tree — start the display spin
 	# once the menu row is actually added.
 	container.tree_entered.connect(func():
@@ -909,6 +947,7 @@ func _show_defeat_menu(flavor: String) -> void:
 	_spacer(box, 18)
 	_button(box, "ARMORY", func(): _show_store(func(): _show_defeat_menu(flavor)))
 	_button(box, "REDEPLOY", func():
+		Game.capture_mouse()   # inside the click gesture (web pointer lock)
 		await _fade(1.0, 0.3)
 		_deploy_mission(current_mission_id)
 		await _fade(0.0, 0.5))

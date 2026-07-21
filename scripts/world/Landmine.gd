@@ -55,12 +55,13 @@ func _ready() -> void:
 	_lamp.material_override = _lamp_mat
 	_lamp.position.y = 0.34
 	add_child(_lamp)
-	_light = OmniLight3D.new()
-	_light.light_color = Color(1.0, 0.2, 0.1)
-	_light.omni_range = 2.5
-	_light.light_energy = 0.0
-	_light.position.y = 0.6
-	add_child(_light)
+	if not Game.low_gfx():
+		_light = OmniLight3D.new()
+		_light.light_color = Color(1.0, 0.2, 0.1)
+		_light.omni_range = 2.5
+		_light.light_energy = 0.0
+		_light.position.y = 0.6
+		add_child(_light)
 
 	# Bullet-sensitive plate: shooting a mine detonates it from safety.
 	var plate := MineBody.new()
@@ -73,7 +74,8 @@ func _process(delta: float) -> void:
 	_t += delta * (16.0 if _fusing else 2.2)
 	var pulse := maxf(sin(_t), 0.0)
 	_lamp_mat.emission_energy_multiplier = 0.6 + pulse * (6.0 if _fusing else 2.4)
-	_light.light_energy = pulse * (2.5 if _fusing else 0.7)
+	if _light != null:
+		_light.light_energy = pulse * (2.5 if _fusing else 0.7)
 
 func _on_trip(_body: Node3D) -> void:
 	trigger()

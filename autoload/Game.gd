@@ -52,15 +52,15 @@ func skin_data(id: String) -> Dictionary:
 const WEAPONS := [
 	{"id": "rifle", "name": "PLASTIC RIFLE", "desc": "Trusty full-auto. Does everything well.",
 		"path": "res://data/weapons/plastic_rifle.tres", "gun": "AK", "cost": 0},
-	{"id": "repeater", "name": "RUBBER BAND REPEATER", "desc": "Hard-hitting snap shots. Satisfying twang.",
+	{"id": "repeater", "name": "RUBBER BAND REPEATER", "desc": "Snap shots that SLAP toys off their feet. 30-band drum.",
 		"path": "res://data/weapons/rubber_band_repeater.tres", "gun": "Revolver", "cost": 250},
-	{"id": "scatter", "name": "NERF SCATTERGUN", "desc": "Five foam pellets. King of close quarters.",
+	{"id": "scatter", "name": "NERF SCATTERGUN", "desc": "Five foam pellets that shove the crowd back. 16 shells.",
 		"path": "res://data/weapons/nerf_scatter.tres", "gun": "Shotgun", "cost": 350},
-	{"id": "soaker", "name": "SUPER SOAKER XL", "desc": "A firehose of water beads. Never stops.",
+	{"id": "soaker", "name": "SUPER SOAKER XL", "desc": "A 160-bead firehose. Constant pressure pushes enemies around.",
 		"path": "res://data/weapons/super_soaker.tres", "gun": "SMG", "cost": 400},
-	{"id": "sniper", "name": "DART SNIPER", "desc": "One dart, one toy. Cross-room deletion.",
+	{"id": "sniper", "name": "DART SNIPER", "desc": "Drills through TWO toys per dart. 12-dart clip.",
 		"path": "res://data/weapons/dart_sniper.tres", "gun": "Sniper", "cost": 550},
-	{"id": "marble", "name": "MARBLE CANNON", "desc": "Explosive glass marbles. Splash damage.",
+	{"id": "marble", "name": "MARBLE CANNON", "desc": "Explosive glass marbles. Splash damage + blast knockdown.",
 		"path": "res://data/weapons/marble_cannon.tres", "gun": "GrenadeLauncher", "cost": 800},
 ]
 var selected_weapon: String = "rifle"
@@ -107,6 +107,12 @@ var touch_look := Vector2.ZERO
 
 func is_touch() -> bool:
 	return DisplayServer.is_touchscreen_available()
+
+## Cheap-GPU profile: web builds and touch devices run the Compatibility
+## renderer where every dynamic light re-renders nearby geometry. Decorative
+## lights should check this and skip themselves.
+func low_gfx() -> bool:
+	return OS.has_feature("web") or is_touch()
 
 func capture_mouse_on_web() -> void:
 	# Browsers only allow pointer lock after a user click — skip auto-capture on web.

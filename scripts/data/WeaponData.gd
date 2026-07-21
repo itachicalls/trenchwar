@@ -17,3 +17,5 @@ extends Resource
 @export var sound: String = "shoot"           ## Sfx stream name
 @export var explosive_radius: float = 0.0     ## >0 = splash damage
 @export var recoil: float = 1.0               ## camera kick multiplier
+@export var knockback: float = 0.0            ## shove victims back (units/sec)
+@export var pierce: int = 0                   ## extra bodies a shot drills through

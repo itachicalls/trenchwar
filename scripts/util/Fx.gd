@@ -17,6 +17,36 @@ static func explosion(node: Node, position: Vector3, radius: float = 2.5) -> voi
 	_flash(root, position, Color(1.0, 0.7, 0.3), radius * 2.2)
 	Sfx.play_at("explosion", position)
 
+## Heavy ordnance (tank shells, mortars): fireball + smoke column + ground
+## shockwave ring + tumbling debris + camera kick. The "oh THAT hit" tier.
+static func ordnance_explosion(node: Node, position: Vector3, radius: float) -> void:
+	var root := _root(node)
+	_burst(root, position, Color(1.0, 0.65, 0.15), 34, 0.55, radius * 3.2, 0.2)
+	_burst(root, position, Color(1.0, 0.9, 0.5), 14, 0.3, radius * 4.0, 0.12)
+	_burst(root, position + Vector3.UP * 0.5, Color(0.3, 0.28, 0.26), 22, 1.4, radius * 1.4, 0.42)
+	_burst(root, position, Color(0.55, 0.45, 0.3), 16, 1.0, radius * 2.4, 0.14, true)
+	_flash(root, position, Color(1.0, 0.7, 0.3), radius * 3.0)
+	ring_pulse(node, position + Vector3.UP * 0.25, Color(1.0, 0.75, 0.4), radius * 1.5, 0.5)
+	shake_camera(node, clampf(radius * 0.06, 0.1, 0.4))
+	Sfx.play_at("explosion", position)
+
+## Kick the active camera around briefly. Distance-attenuated so far-away
+## blasts only murmur.
+static func shake_camera(node: Node, strength: float = 0.25, duration: float = 0.4) -> void:
+	if node == null or not node.is_inside_tree():
+		return
+	var cam := node.get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var tw := cam.create_tween()
+	var steps := 6
+	for i in steps:
+		var falloff := 1.0 - float(i) / steps
+		tw.tween_property(cam, "h_offset", randf_range(-strength, strength) * falloff, duration / steps)
+		tw.parallel().tween_property(cam, "v_offset", randf_range(-strength, strength) * falloff, duration / steps)
+	tw.tween_property(cam, "h_offset", 0.0, 0.08)
+	tw.parallel().tween_property(cam, "v_offset", 0.0, 0.08)
+
 ## A toy doesn't bleed — it pops apart into bright plastic shards.
 static func plastic_shatter(node: Node, position: Vector3, color: Color) -> void:
 	_burst(_root(node), position, color, 22, 0.8, 5.0, 0.12, true)
@@ -25,7 +55,7 @@ static func plastic_shatter(node: Node, position: Vector3, color: Color) -> void
 ## single biggest frame spike with automatic weapons (each light re-renders
 ## nearby geometry, and web/Compatibility pays full price per light). The
 ## emissive star reads just as well at toy scale.
-static func muzzle_flash(parent: Node3D, color: Color) -> void:
+static func muzzle_flash(parent: Node3D, color: Color, size: float = 1.0) -> void:
 	var flash := MeshInstance3D.new()
 	var s := SphereMesh.new()
 	s.radius = 0.16
@@ -34,7 +64,7 @@ static func muzzle_flash(parent: Node3D, color: Color) -> void:
 	s.rings = 4
 	flash.mesh = s
 	flash.material_override = ToyMaterials.glow(color, 4.0)
-	flash.scale = Vector3.ONE * randf_range(0.8, 1.3)
+	flash.scale = Vector3.ONE * randf_range(0.8, 1.3) * size
 	parent.add_child(flash)
 	var tw := flash.create_tween()
 	tw.tween_property(flash, "scale", Vector3.ONE * 0.05, 0.07)
@@ -100,6 +130,10 @@ static func damage_number(node: Node, position: Vector3, amount: float, killed: 
 		label.queue_free())
 
 static func _flash(root: Node, position: Vector3, color: Color, range_: float) -> void:
+	# Explosion light bloom: desktop only — transient lights stutter the
+	# Compatibility renderer, and the particle fireball carries the effect.
+	if Game.low_gfx():
+		return
 	var light := OmniLight3D.new()
 	light.light_color = color
 	light.light_energy = 4.0
@@ -113,7 +147,7 @@ static func _flash(root: Node, position: Vector3, color: Color, range_: float) -
 ## Capped: heavy firefights spawned unbounded particle nodes.
 static var _live_bursts := 0
 static func _burst(root: Node, position: Vector3, color: Color, count: int, life: float, speed: float, size: float, gravity_shards: bool = false) -> void:
-	if _live_bursts >= 30:
+	if _live_bursts >= (14 if Game.low_gfx() else 30):
 		return
 	_live_bursts += 1
 	var p := CPUParticles3D.new()

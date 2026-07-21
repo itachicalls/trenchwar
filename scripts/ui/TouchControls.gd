@@ -4,26 +4,30 @@ extends CanvasLayer
 ## touchscreen is present; hides itself outside of gameplay.
 ##
 ## Layout (thumb-reach ergonomics):
-##   left-bottom  — floating move joystick (appears where the thumb lands;
-##                  push to the rim to sprint)
-##   right side   — drag anywhere to look
+##   left-bottom  — move joystick with a visible home base (recenters under
+##                  the thumb on touch; push to the rim to sprint)
+##   right side   — drag anywhere free to look (sensitivity is a fraction of
+##                  screen height, so it feels identical on every device)
 ##   right-bottom — FIRE (large), JUMP, AIM toggle, RELOAD, SWAP
 ##   center-right — INTERACT [E]
 ##   bottom-center— squad orders 1/2/3
 ## All buttons drive the same input actions the keyboard uses, so vehicles,
 ## rescues and menus need zero special-casing.
 
-const LOOK_SENS := 0.0042
-const STICK_RADIUS := 110.0
+## Radians turned by dragging a full screen-height. ~126° feels controllable.
+const LOOK_TURN := 2.2
 
 var _stick_finger := -1
-var _stick_origin := Vector2.ZERO
+var _stick_home := Vector2.ZERO      # resting position of the base
+var _stick_origin := Vector2.ZERO    # where the current touch grabbed it
 var _stick_vec := Vector2.ZERO
+var _stick_radius := 120.0
 var _look_finger := -1
 var _aim_on := false
 
 var _canvas: Control            # full-screen draw surface (joystick visuals)
 var _buttons: Array[Dictionary] = []   # {pos, radius, action, label, toggle, held}
+var _last_vp := Vector2.ZERO
 
 func _ready() -> void:
 	layer = 55
@@ -32,36 +36,44 @@ func _ready() -> void:
 	_canvas.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_canvas.draw.connect(_draw_controls)
 	add_child(_canvas)
-	get_viewport().size_changed.connect(_layout)
 	_layout()
 
 func _layout() -> void:
 	var vp := _canvas.get_viewport_rect().size
+	_last_vp = vp
+	# Everything sized off the SHORT edge: consistent thumb size in both
+	# orientations and on tablets.
+	var u := minf(vp.x, vp.y) / 100.0   # 1u = 1% of short edge
+	_stick_radius = 16.0 * u
+	_stick_home = Vector2(20.0 * u, vp.y - 22.0 * u)
 	_buttons = [
-		{"id": "fire", "pos": Vector2(vp.x - 130, vp.y - 150), "radius": 64.0,
+		{"id": "fire", "pos": Vector2(vp.x - 14.0 * u, vp.y - 20.0 * u), "radius": 10.5 * u,
 			"action": "fire", "label": "FIRE", "toggle": false, "held": false},
-		{"id": "jump", "pos": Vector2(vp.x - 280, vp.y - 100), "radius": 46.0,
+		{"id": "jump", "pos": Vector2(vp.x - 34.0 * u, vp.y - 12.0 * u), "radius": 7.5 * u,
 			"action": "jump", "label": "JUMP", "toggle": false, "held": false},
-		{"id": "aim", "pos": Vector2(vp.x - 120, vp.y - 290), "radius": 40.0,
+		{"id": "aim", "pos": Vector2(vp.x - 12.0 * u, vp.y - 38.0 * u), "radius": 6.5 * u,
 			"action": "aim", "label": "AIM", "toggle": true, "held": false},
-		{"id": "reload", "pos": Vector2(vp.x - 250, vp.y - 230), "radius": 36.0,
+		{"id": "reload", "pos": Vector2(vp.x - 30.0 * u, vp.y - 30.0 * u), "radius": 6.0 * u,
 			"action": "reload", "label": "R", "toggle": false, "held": false},
-		{"id": "swap", "pos": Vector2(vp.x - 350, vp.y - 170), "radius": 36.0,
+		{"id": "swap", "pos": Vector2(vp.x - 45.0 * u, vp.y - 22.0 * u), "radius": 6.0 * u,
 			"action": "swap_weapon", "label": "SWAP", "toggle": false, "held": false},
-		{"id": "interact", "pos": Vector2(vp.x - 90, vp.y * 0.52), "radius": 42.0,
+		{"id": "interact", "pos": Vector2(vp.x - 10.0 * u, vp.y * 0.48), "radius": 7.0 * u,
 			"action": "interact", "label": "E", "toggle": false, "held": false},
-		{"id": "cmd1", "pos": Vector2(vp.x * 0.42, vp.y - 60), "radius": 30.0,
+		{"id": "cmd1", "pos": Vector2(vp.x * 0.40, vp.y - 7.0 * u), "radius": 5.0 * u,
 			"action": "cmd_follow", "label": "1", "toggle": false, "held": false},
-		{"id": "cmd2", "pos": Vector2(vp.x * 0.5, vp.y - 60), "radius": 30.0,
+		{"id": "cmd2", "pos": Vector2(vp.x * 0.48, vp.y - 7.0 * u), "radius": 5.0 * u,
 			"action": "cmd_hold", "label": "2", "toggle": false, "held": false},
-		{"id": "cmd3", "pos": Vector2(vp.x * 0.58, vp.y - 60), "radius": 30.0,
+		{"id": "cmd3", "pos": Vector2(vp.x * 0.56, vp.y - 7.0 * u), "radius": 5.0 * u,
 			"action": "cmd_charge", "label": "3", "toggle": false, "held": false},
-		{"id": "pause", "pos": Vector2(vp.x * 0.5, 44), "radius": 30.0,
+		{"id": "pause", "pos": Vector2(vp.x * 0.5, 7.0 * u), "radius": 5.0 * u,
 			"action": "pause", "label": "II", "toggle": false, "held": false},
 	]
 	_canvas.queue_redraw()
 
 func _process(_delta: float) -> void:
+	# Re-layout on any viewport/content-scale change (rotation, UI scaling).
+	if _canvas.get_viewport_rect().size != _last_vp:
+		_layout()
 	var playing := Game.state == Game.State.PLAYING and not get_tree().paused
 	if visible != playing:
 		visible = playing
@@ -105,7 +117,7 @@ func _input(event: InputEvent) -> void:
 func _touch_down(finger: int, pos: Vector2) -> void:
 	# Buttons win over everything.
 	for b in _buttons:
-		if pos.distance_to(b.pos) <= b.radius * 1.25:
+		if pos.distance_to(b.pos) <= b.radius * 1.3:
 			b.held = true
 			b["finger"] = finger
 			if b.toggle:
@@ -128,7 +140,7 @@ func _touch_down(finger: int, pos: Vector2) -> void:
 			return
 	var vp := _canvas.get_viewport_rect().size
 	if pos.x < vp.x * 0.42 and _stick_finger == -1:
-		# Floating joystick: base spawns under the thumb.
+		# Joystick: base recenters under the thumb wherever it lands.
 		_stick_finger = finger
 		_stick_origin = pos
 		_stick_vec = Vector2.ZERO
@@ -153,26 +165,37 @@ func _touch_up(finger: int) -> void:
 
 func _touch_drag(finger: int, pos: Vector2, relative: Vector2) -> void:
 	if finger == _stick_finger:
-		var v := (pos - _stick_origin) / STICK_RADIUS
+		var v := (pos - _stick_origin) / _stick_radius
 		_stick_vec = v.limit_length(1.0)
 	elif finger == _look_finger:
-		Game.touch_look += relative * LOOK_SENS
+		var vp := _canvas.get_viewport_rect().size
+		# Ignore bogus giant deltas (browser touch quirks) instead of whipping
+		# the camera across the room.
+		if relative.length() > vp.y * 0.25:
+			return
+		Game.touch_look += relative * (LOOK_TURN / maxf(vp.y, 1.0))
 
 ## Joystick + button rings drawn directly — crisp at any resolution, no
 ## texture assets to ship or scale.
 func _draw_controls() -> void:
-	if _stick_finger != -1:
-		_canvas.draw_circle(_stick_origin, STICK_RADIUS, Color(1, 1, 1, 0.08))
-		_canvas.draw_arc(_stick_origin, STICK_RADIUS, 0, TAU, 48, Color(1, 1, 1, 0.35), 3.0, true)
-		var knob := _stick_origin + _stick_vec * STICK_RADIUS * 0.8
-		_canvas.draw_circle(knob, 40.0, Color(0.75, 0.9, 0.55, 0.55))
+	# Joystick base is ALWAYS visible so players know where to put a thumb.
+	var base := _stick_origin if _stick_finger != -1 else _stick_home
+	_canvas.draw_circle(base, _stick_radius, Color(0.05, 0.09, 0.04, 0.42))
+	_canvas.draw_arc(base, _stick_radius, 0, TAU, 48, Color(0.9, 1.0, 0.85, 0.55), 4.0, true)
+	var knob := base + _stick_vec * _stick_radius * 0.75
+	_canvas.draw_circle(knob, _stick_radius * 0.42, Color(0.72, 0.9, 0.5, 0.85 if _stick_finger != -1 else 0.55))
+	var font := ThemeDB.fallback_font
+	if _stick_finger == -1:
+		var hint := "MOVE"
+		var hs := font.get_string_size(hint, HORIZONTAL_ALIGNMENT_CENTER, -1, int(_stick_radius * 0.28))
+		_canvas.draw_string(font, base + Vector2(-hs.x / 2.0, hs.y * 0.3), hint,
+			HORIZONTAL_ALIGNMENT_CENTER, -1, int(_stick_radius * 0.28), Color(1, 1, 1, 0.7))
 	for b in _buttons:
-		var col := Color(0.75, 0.9, 0.55, 0.5 if b.held else 0.22)
-		_canvas.draw_circle(b.pos, b.radius, Color(0.08, 0.12, 0.06, 0.5))
-		_canvas.draw_arc(b.pos, b.radius, 0, TAU, 40, col, 3.0, true)
-		var font := ThemeDB.fallback_font
-		var size := int(b.radius * 0.55)
+		_canvas.draw_circle(b.pos, b.radius, Color(0.05, 0.09, 0.04, 0.62 if b.held else 0.42))
+		_canvas.draw_arc(b.pos, b.radius, 0, TAU, 40,
+			Color(0.72, 0.95, 0.5, 0.95) if b.held else Color(0.9, 1.0, 0.85, 0.55), 4.0, true)
+		var size := int(b.radius * 0.5)
 		var text_size := font.get_string_size(b.label, HORIZONTAL_ALIGNMENT_CENTER, -1, size)
 		_canvas.draw_string(font, b.pos + Vector2(-text_size.x / 2.0, text_size.y * 0.32),
 			b.label, HORIZONTAL_ALIGNMENT_CENTER, -1, size,
-			Color(0.95, 1.0, 0.9, 0.9 if b.held else 0.6))
+			Color(0.98, 1.0, 0.95, 1.0 if b.held else 0.85))

@@ -60,7 +60,9 @@ static func _make(kind_: Kind, amount_: int) -> Pickup:
 
 func _ready() -> void:
 	collision_layer = 0
-	collision_mask = 0b0010
+	# Units AND vehicles: while driving, the player's own collider is off
+	# (layer 0), so the tank hull must be able to trigger pickups itself.
+	collision_mask = 0b0110
 	monitoring = true
 	var shape := CollisionShape3D.new()
 	var sphere := SphereShape3D.new()
@@ -295,17 +297,22 @@ func _build_presentation(color: Color) -> void:
 		orb.name = "Orb%d" % i
 		add_child(orb)
 
-	# Pulsing light (driven in _process).
-	_light = OmniLight3D.new()
-	_light.light_color = color
-	_light.light_energy = 0.9
-	_light.omni_range = 3.5
-	add_child(_light)
+	# Pulsing light (driven in _process). PERF: desktop-only — with coins
+	# everywhere this was 20+ dynamic lights per room, and the Compatibility
+	# renderer (web/mobile) pays full price per light. The additive beam,
+	# disc and ring already sell the glow without it.
+	if not Game.low_gfx():
+		_light = OmniLight3D.new()
+		_light.light_color = color
+		_light.light_energy = 0.9
+		_light.omni_range = 3.5
+		add_child(_light)
 
 func _process(delta: float) -> void:
 	_t += delta
 	_spin.rotate_y(delta * (5.0 if kind == Kind.COIN else 2.2))
-	_light.light_energy = 0.7 + sin(_t * 3.0) * 0.35
+	if _light != null:
+		_light.light_energy = 0.7 + sin(_t * 3.0) * 0.35
 	var ring := get_node_or_null("GlowRing")
 	if ring != null:
 		ring.rotation.y += delta * 0.8
@@ -325,23 +332,37 @@ func _process(delta: float) -> void:
 		_magnetized = true
 
 func _on_body_entered(body: Node3D) -> void:
+	# Direct player touch, or the vehicle the player is currently driving.
+	var vehicle: Node3D = null
 	if body != Game.player:
-		return
+		if body.is_in_group("vehicles") and Game.player != null \
+				and "driver" in body and body.driver == Game.player:
+			vehicle = body
+		else:
+			return
 	match kind:
 		Kind.PARTS:
 			Game.plastic_parts += amount
 		Kind.HEALTH:
-			body.heal(float(amount))
+			if vehicle != null:
+				# Battery juice repairs toy armor while driving.
+				vehicle.health.heal(float(amount) * 2.0)
+				Events.player_health_changed.emit(vehicle.health.current, vehicle.health.max_health)
+			else:
+				Game.player.heal(float(amount))
 		Kind.AMMO:
-			if body.weapon != null:
-				body.weapon.ammo = body.weapon.data.magazine_size
-				body.weapon.ammo_updated.emit(body.weapon.ammo, body.weapon.data.magazine_size)
+			if vehicle != null and "cannon" in vehicle and vehicle.cannon != null:
+				vehicle.cannon.ammo = vehicle.cannon.data.magazine_size
+				Events.ammo_changed.emit(vehicle.cannon.ammo, vehicle.cannon.data.magazine_size)
+			elif Game.player.weapon != null:
+				Game.player.weapon.ammo = Game.player.weapon.data.magazine_size
+				Game.player.weapon.ammo_updated.emit(Game.player.weapon.ammo, Game.player.weapon.data.magazine_size)
 		Kind.COIN:
 			Game.coins += amount
 			Sfx.play("pickup", 0.0)
 		Kind.RAPID, Kind.SPEED, Kind.SHIELD:
-			if body.has_method("apply_powerup"):
-				body.apply_powerup(POWERUP_IDS[kind], POWERUP_TIME[kind])
+			if Game.player.has_method("apply_powerup"):
+				Game.player.apply_powerup(POWERUP_IDS[kind], POWERUP_TIME[kind])
 	Fx.ring_pulse(self, global_position - Vector3.UP * 0.3, COLORS[kind], 1.8)
 	Sfx.play("pickup", -4.0)
 	queue_free()

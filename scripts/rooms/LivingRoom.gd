@@ -360,10 +360,12 @@ func _check_vacuum_trigger() -> void:
 		if o.id == "filters":
 			o.text = "Destroy THE VACUUM's filter pods"
 	Events.objectives_changed.emit()
-	# Dramatic entrance from the closet corner.
+	# Dramatic entrance — bursts out of the closet corner but LANDS on open
+	# rug east of the couch. Spawning it in the corner wedged it between the
+	# couch and the wall where every sweep goal was blocked: boss stood still.
 	_vacuum = VacuumBoss.new()
 	add_child(_vacuum)
-	_vacuum.global_position = Vector3(60, 1, -45)
+	_vacuum.global_position = Vector3(48, 1, -26)
 	Events.notify.emit("A ROAR FROM THE CLOSET... THE VACUUM AWAKENS!")
 	Sfx.play("explosion", 0.0, 0.2)
-	Fx.explosion(self, Vector3(60, 3, -45), 4.0)
+	Fx.explosion(self, Vector3(48, 3, -26), 4.0)

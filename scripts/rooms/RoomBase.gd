@@ -296,11 +296,12 @@ func spawn_weapon_drop(pos: Vector3, weapon_id: String, respawn_after: float = 3
 	ring.material_override = ToyMaterials.glow(wd.projectile_color, 2.4)
 	ring.position.y = -1.0
 	vis.add_child(ring)
-	var light := OmniLight3D.new()
-	light.light_color = wd.projectile_color
-	light.light_energy = 1.6
-	light.omni_range = 7.0
-	vis.add_child(light)
+	if not Game.low_gfx():
+		var light := OmniLight3D.new()
+		light.light_color = wd.projectile_color
+		light.light_energy = 1.6
+		light.omni_range = 7.0
+		vis.add_child(light)
 
 	var taken := {"v": false}
 	area.body_entered.connect(func(body: Node3D):

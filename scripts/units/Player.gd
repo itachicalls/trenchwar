@@ -126,6 +126,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			Game.capture_mouse()
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		# Pointer-lock acquisition can deliver one giant bogus delta (the
+		# browser reports the jump to screen center). Swallow it.
+		if event.relative.length() > 250.0:
+			return
 		_yaw -= event.relative.x * MOUSE_SENS
 		_pitch = clampf(_pitch - event.relative.y * MOUSE_SENS, -1.2, 0.7)
 
@@ -331,6 +335,12 @@ func _update_movement(delta: float) -> void:
 		face_direction(wish, delta)
 
 func _update_combat() -> void:
+	# Web desktop: while the pointer isn't locked yet, the camera can't turn —
+	# firing in that state is the "frozen camera, then boom" glitch. The first
+	# click's only job is acquiring the lock.
+	if OS.has_feature("web") and not Game.is_touch() \
+			and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		return
 	_aiming = Input.is_action_pressed("aim")
 	if Input.is_action_pressed("fire") if weapon.data.automatic else Input.is_action_just_pressed("fire"):
 		if weapon.try_fire(_aim_direction()):
