@@ -42,15 +42,10 @@ func _body_params() -> Dictionary:
 		"tint": Game.skin_data(Game.selected_skin).tint}
 
 func _unit_ready() -> void:
-	# Rooms may pre-rotate the spawn node to face the action; adopt it as
-	# camera yaw since the node itself must stay unrotated for mouse-look.
-	_yaw = rotation.y
-	rotation.y = 0.0
-	# Face the camera direction from frame one. Without this the body stays
-	# on the mold's default -Z until the first move/shot, so the first shot
-	# of a mission visibly fired sideways.
-	if body_rig != null:
-		body_rig.rotation.y = _yaw
+	# Rooms aim the spawn by rotating the Player node — usually AFTER
+	# add_child (so after this very function ran). _fold_node_yaw() in the
+	# physics loop is what actually adopts it; this just covers pre-rotation.
+	_fold_node_yaw()
 	# Store upgrades bought with coins apply here, on every spawn.
 	base_health = 200.0 + 50.0 * Game.upgrades.get("health", 0)
 	weapon.damage_mult = 1.0 + 0.2 * Game.upgrades.get("damage", 0)
@@ -134,6 +129,25 @@ func _unhandled_input(event: InputEvent) -> void:
 		_yaw -= event.relative.x * MOUSE_SENS
 		_pitch = clampf(_pitch - event.relative.y * MOUSE_SENS, -1.2, 0.7)
 
+## THE "force looks left when firing" bug, root-caused: rooms rotate the
+## Player NODE to face the action (player.rotation_degrees.y = ...), but they
+## do it after add_child, i.e. after _unit_ready already sampled rotation.
+## The camera (a child) inherited the node yaw so the VIEW looked correct,
+## while _yaw stayed 0 — and everything computed from _yaw (move directions,
+## the between-shots body facing) was off by the spawn angle. Firing made it
+## obvious: the body whipped toward stale _yaw between snaps.
+## Fix: every physics frame, fold any external node yaw into camera yaw and
+## zero the node, keeping the body's world facing unchanged.
+func _fold_node_yaw() -> void:
+	if absf(rotation.y) < 0.0001:
+		return
+	_yaw += rotation.y
+	rotation.y = 0.0
+	if _cam_pivot != null:
+		_cam_pivot.rotation.y = _yaw
+	if body_rig != null:
+		body_rig.rotation.y = _yaw
+
 ## Touch look-drag accumulated by TouchControls; consumed once per frame.
 func _consume_touch_look() -> void:
 	if Game.touch_look == Vector2.ZERO:
@@ -155,6 +169,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if current_vehicle != null or not Game.is_playing():
 		return
+	_fold_node_yaw()
 	_consume_touch_look()
 	_update_camera(delta)
 	_update_movement(delta)
