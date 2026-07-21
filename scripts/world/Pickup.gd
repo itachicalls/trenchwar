@@ -4,7 +4,7 @@ extends Area3D
 ## vertical light beam, a glowing ground ring, idle sparkles, bob + spin, and a
 ## magnet pull once the player gets close. Collecting pops a ring pulse.
 
-enum Kind { PARTS, HEALTH, AMMO, COIN, RAPID, SPEED, SHIELD }
+enum Kind { PARTS, HEALTH, AMMO, COIN, RAPID, SPEED, SHIELD, FUEL }
 
 const COLORS := {
 	Kind.PARTS: Color(0.45, 1.0, 0.55),
@@ -14,6 +14,7 @@ const COLORS := {
 	Kind.RAPID: Color(1.0, 0.45, 0.1),
 	Kind.SPEED: Color(0.3, 0.9, 1.0),
 	Kind.SHIELD: Color(0.45, 0.6, 1.0),
+	Kind.FUEL: Color(1.0, 0.6, 0.15),
 }
 ## Powerup durations in seconds, by kind.
 const POWERUP_TIME := {Kind.RAPID: 12.0, Kind.SPEED: 10.0, Kind.SHIELD: 8.0}
@@ -43,6 +44,10 @@ static func spawn_coin(root: Node, position: Vector3, value: int = 1) -> void:
 
 static func spawn_powerup(root: Node, position: Vector3, which: Kind) -> void:
 	_place(root, _make(which, 1), position)
+
+## Jetpack fuel. amount = fuel points restored.
+static func spawn_fuel(root: Node, position: Vector3, amount: int = 50) -> void:
+	_place(root, _make(Kind.FUEL, amount), position)
 
 static func random_powerup() -> Kind:
 	return [Kind.RAPID, Kind.SPEED, Kind.SHIELD][randi() % 3]
@@ -81,6 +86,7 @@ func _ready() -> void:
 		Kind.RAPID: _build_rapid(color)
 		Kind.SPEED: _build_speed(color)
 		Kind.SHIELD: _build_shield(color)
+		Kind.FUEL: _build_fuelcan(color)
 	_build_presentation(color)
 	body_entered.connect(_on_body_entered)
 
@@ -213,6 +219,31 @@ func _build_speed(color: Color) -> void:
 		chev.position = Vector3(0, -0.14 + i * 0.2, 0)
 		chev.rotation_degrees.z = 90.0
 		_spin.add_child(chev)
+
+## Jetpack fuel: the real gas-can prop from the asset pack, with a fallback
+## jerry-can if the model is missing.
+func _build_fuelcan(color: Color) -> void:
+	var prop := ModelLib.build_prop("gascan", 0.62)
+	if prop != null:
+		prop.position.y = -0.3
+		_spin.add_child(prop)
+		return
+	var can := MeshInstance3D.new()
+	var b := BoxMesh.new()
+	b.size = Vector3(0.34, 0.42, 0.2)
+	can.mesh = b
+	can.material_override = ToyMaterials.plastic(color, 0.4)
+	_spin.add_child(can)
+	var spout := MeshInstance3D.new()
+	var c := CylinderMesh.new()
+	c.top_radius = 0.045
+	c.bottom_radius = 0.06
+	c.height = 0.14
+	spout.mesh = c
+	spout.material_override = ToyMaterials.metal(Color(0.6, 0.6, 0.62), 0.35)
+	spout.position = Vector3(0.1, 0.26, 0)
+	spout.rotation_degrees.z = -22.0
+	_spin.add_child(spout)
 
 ## Shield: translucent bubble with a glowing core.
 func _build_shield(color: Color) -> void:
@@ -363,6 +394,9 @@ func _on_body_entered(body: Node3D) -> void:
 		Kind.RAPID, Kind.SPEED, Kind.SHIELD:
 			if Game.player.has_method("apply_powerup"):
 				Game.player.apply_powerup(POWERUP_IDS[kind], POWERUP_TIME[kind])
+		Kind.FUEL:
+			Game.player.refill_fuel(float(amount))
+			Events.notify.emit("JETPACK REFUELED  +%d%%" % amount)
 	Fx.ring_pulse(self, global_position - Vector3.UP * 0.3, COLORS[kind], 1.8)
 	Sfx.play("pickup", -4.0)
 	queue_free()

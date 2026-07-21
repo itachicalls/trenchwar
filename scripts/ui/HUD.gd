@@ -6,6 +6,8 @@ extends CanvasLayer
 var root: Control
 var health_bar: ProgressBar
 var health_label: Label
+var fuel_bar: ProgressBar
+var fuel_label: Label
 var ammo_label: Label
 var weapon_label: Label
 var parts_label: Label
@@ -39,6 +41,7 @@ func _ready() -> void:
 	add_child(root)
 	_build()
 	Events.player_health_changed.connect(_on_health)
+	Events.fuel_changed.connect(_on_fuel)
 	Events.ammo_changed.connect(_on_ammo)
 	Events.weapon_changed.connect(func(n): weapon_label.text = n.to_upper())
 	Events.parts_changed.connect(func(n): parts_label.text = "PARTS  %d" % n)
@@ -54,6 +57,8 @@ func _ready() -> void:
 	var p := Game.player
 	if p != null and is_instance_valid(p):
 		_on_health(p.health.current, p.health.max_health)
+		if "fuel" in p:
+			_on_fuel(p.fuel, Player.FUEL_MAX)
 		if p.weapon != null:
 			_on_ammo(p.weapon.ammo, p.weapon.data.magazine_size)
 			weapon_label.text = p.weapon.data.display_name.to_upper()
@@ -113,6 +118,19 @@ func _build() -> void:
 	health_bar.custom_minimum_size = Vector2(250, 18)
 	health_bar.show_percentage = false
 	bl_box.add_child(health_bar)
+	# Jetpack fuel gauge: thin amber strip under integrity.
+	fuel_label = _label(bl_box, 12, Color(1.0, 0.75, 0.3), true)
+	fuel_label.text = "JETPACK FUEL"
+	fuel_bar = ProgressBar.new()
+	fuel_bar.custom_minimum_size = Vector2(250, 10)
+	fuel_bar.show_percentage = false
+	fuel_bar.max_value = 100.0
+	fuel_bar.value = 100.0
+	var fuel_fill := StyleBoxFlat.new()
+	fuel_fill.bg_color = Color(1.0, 0.68, 0.2)
+	fuel_fill.set_corner_radius_all(3)
+	fuel_bar.add_theme_stylebox_override("fill", fuel_fill)
+	bl_box.add_child(fuel_bar)
 	squad_label = _label(bl_box, 14, Color(0.75, 0.85, 0.6))
 	squad_label.text = _squad_text(0, "follow")
 
@@ -338,6 +356,13 @@ func _on_health(current: float, maximum: float) -> void:
 	health_label.text = "INTEGRITY  %d / %d" % [int(current), int(maximum)]
 	var missing := 1.0 - (current / maximum if maximum > 0 else 0.0)
 	low_hp_vignette.modulate.a = clampf(missing - 0.25, 0.0, 0.75)
+
+func _on_fuel(fuel: float, max_fuel: float) -> void:
+	fuel_bar.max_value = max_fuel
+	fuel_bar.value = fuel
+	fuel_label.text = "JETPACK FUEL  %d%%" % int(round(fuel / max_fuel * 100.0))
+	fuel_label.add_theme_color_override("font_color",
+		UiTheme.RED if fuel <= 15.0 else Color(1.0, 0.75, 0.3))
 
 func _on_ammo(ammo: int, magazine: int) -> void:
 	ammo_label.text = "%d / %d" % [ammo, magazine]

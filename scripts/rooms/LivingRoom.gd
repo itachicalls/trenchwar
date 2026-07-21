@@ -284,6 +284,9 @@ func _spawn_units() -> void:
 		{"route": [Vector3(15, 1, 38), Vector3(-18, 1, 40), Vector3(0, 1, 28)], "mix": ["heavy", "trooper"]},
 		{"route": [Vector3(-35, 1, -20), Vector3(-10, 1, -18), Vector3(-30, 1, -12)], "mix": ["trooper", "scout"]},
 		{"route": [Vector3(50, 1, 35), Vector3(58, 1, 12), Vector3(40, 1, 25)], "mix": ["heavy", "sniper"]},
+		# Coffee-table overwatch: snipers on the plateau own the rug until the
+		# player jets up (or takes the book stairs) to clear them.
+		{"route": [Vector3(-14, 16.2, 6), Vector3(14, 16.2, -6), Vector3(4, 16.2, 8)], "mix": ["sniper", "scout"]},
 	]
 	for patrol in patrols:
 		var route: Array = patrol.route
@@ -317,6 +320,11 @@ func _spawn_pickups_and_toys() -> void:
 		Pickup.spawn_ammo(self, pos)
 	spawn_weapon_drop(Vector3(30, 0, 12), "scatter")
 	spawn_weapon_drop(Vector3(-24, 0, -18), "soaker")
+	# Sky cache on the couch backrest: jetpack up for coins + rapid fire.
+	for i in 5:
+		Pickup.spawn_coin(self, Vector3(-16 + i * 8.0, 15.0, -44), 2)
+	Pickup.spawn_powerup(self, Vector3(8, 15.0, -44), Pickup.Kind.RAPID)
+	Pickup.spawn_fuel(self, Vector3(-24, 16.2, 0))
 	var toy_spots := [
 		["Captain Cushion", Vector3(0, 14.6, -40)],       # on the couch seat
 		["Remote-Keeper", Vector3(52, 0.5, 44)],          # behind the cabinet

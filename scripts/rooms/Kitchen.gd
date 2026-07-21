@@ -80,12 +80,12 @@ func _build_lighting() -> void:
 #  ROOM SHELL — checkerboard tile floor reads instantly as "kitchen".
 # =========================================================================
 func _build_room_shell() -> void:
-	var tile_base := ToyMaterials.plastic(Color(0.82, 0.8, 0.74), 0.55)
+	var tile_base := ToyMaterials.floor_mat(Color(0.66, 0.64, 0.58))
 	var wall_mat := ToyMaterials.wallpaper(Color(0.62, 0.66, 0.62), Color(0.55, 0.6, 0.55))
 	_build_shell(ROOM_W, ROOM_D, WALL_H, tile_base, wall_mat)
 
 	# Dark checker tiles: thin visual planes, no collision needed.
-	var dark_tile := ToyMaterials.plastic(Color(0.3, 0.34, 0.4), 0.5)
+	var dark_tile := ToyMaterials.floor_mat(Color(0.3, 0.34, 0.4))
 	var tile := 14.0
 	for ix in range(-4, 5):
 		for iz in range(-3, 4):
@@ -305,6 +305,9 @@ func _spawn_units() -> void:
 		{"route": [Vector3(-36, 1, -34), Vector3(-14, 1, -40), Vector3(-28, 1, -22)], "mix": ["scout", "scout"]},
 		{"route": [Vector3(12, 26.5, -ROOM_D / 2 + 12), Vector3(-30, 26.5, -ROOM_D / 2 + 12)], "mix": ["sniper", "trooper"]},
 		{"route": [Vector3(30, 1, 40), Vector3(44, 1, 44), Vector3(52, 1, 36)], "mix": ["heavy", "sniper"]},
+		# Dining-table garrison: jetpack territory — grenadier shells the floor
+		# from on high until someone flies up to deal with him.
+		{"route": [Vector3(-20, 21.5, -4), Vector3(6, 21.5, 8), Vector3(2, 21.5, -6)], "mix": ["grenadier", "scout"]},
 	]
 	for patrol in patrols:
 		var route: Array = patrol.route
@@ -334,6 +337,11 @@ func _spawn_pickups_and_toys() -> void:
 		Pickup.spawn_ammo(self, pos)
 	spawn_weapon_drop(Vector3(38, 0, 20), "soaker")
 	spawn_weapon_drop(Vector3(-24, 0, 24), "repeater")
+	# Sky cache on the dining table: coin ring + shield, jetpack-only loot.
+	for i in 6:
+		Pickup.spawn_coin(self, Vector3(-6, 21.2, 2) + Vector3(sin(i * TAU / 6.0) * 6.0, 0, cos(i * TAU / 6.0) * 6.0), 2)
+	Pickup.spawn_powerup(self, Vector3(-14, 21.2, -6), Pickup.Kind.SHIELD)
+	Pickup.spawn_fuel(self, Vector3(2, 21.2, 10))
 	var toy_spots := [
 		["Chef Whiskers", Vector3(-34, 26.6, -ROOM_D / 2 + 12)],  # in the sink
 		["Sgt. Spoon", Vector3(-6, 21.6, 8)],                     # on the table

@@ -71,7 +71,11 @@ func _build_lighting() -> void:
 #  ROOM SHELL — hexagon-feel tile floor, glossy wainscot walls.
 # =========================================================================
 func _build_room_shell() -> void:
-	var tile := ToyMaterials.plastic(Color(0.85, 0.88, 0.9), 0.2)
+	# Matte + mid-tone, not glossy near-white: the old floor rendered as a
+	# blinding pool near the camera (full-brightness white up close, fading
+	# into fog with distance). Darker albedo keeps "white tile" readable
+	# without searing the screen.
+	var tile := ToyMaterials.floor_mat(Color(0.42, 0.47, 0.53))
 	var wall_mat := ToyMaterials.plastic(Color(0.62, 0.72, 0.76), 0.35)
 	_build_shell(ROOM_W, ROOM_D, WALL_H, tile, wall_mat)
 

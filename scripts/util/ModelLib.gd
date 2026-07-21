@@ -101,6 +101,79 @@ static func build_landmark(land_name: String, target_size: float) -> Node3D:
 		aabb.size * s))
 	return rig
 
+## Toy jetpack worn on the player's back: die-cast twin tanks with red caps,
+## dark thruster bells, straps and a little fuel dial. Meta "nozzles" holds
+## the two Node3D exhaust points for flame particles.
+static func build_jetpack() -> Node3D:
+	var rig := Node3D.new()
+	rig.name = "Jetpack"
+	var steel := ToyMaterials.metal(Color(0.72, 0.74, 0.78), 0.3)
+	var dark := ToyMaterials.metal(Color(0.25, 0.26, 0.3), 0.45)
+	var red := ToyMaterials.plastic(Color(0.85, 0.2, 0.16), 0.25)
+
+	var plate := MeshInstance3D.new()
+	var pm := BoxMesh.new()
+	pm.size = Vector3(0.52, 0.62, 0.1)
+	plate.mesh = pm
+	plate.material_override = dark
+	rig.add_child(plate)
+
+	var nozzles: Array = []
+	for side in [-1.0, 1.0]:
+		var tank := MeshInstance3D.new()
+		var tm := CapsuleMesh.new()
+		tm.radius = 0.13
+		tm.height = 0.62
+		tank.mesh = tm
+		tank.material_override = steel
+		tank.position = Vector3(side * 0.15, 0.02, 0.14)
+		rig.add_child(tank)
+		var cap := MeshInstance3D.new()
+		var cm := SphereMesh.new()
+		cm.radius = 0.135
+		cm.height = 0.2
+		cap.mesh = cm
+		cap.material_override = red
+		cap.position = tank.position + Vector3(0, 0.3, 0)
+		rig.add_child(cap)
+		var bell := MeshInstance3D.new()
+		var bm := CylinderMesh.new()
+		bm.top_radius = 0.07
+		bm.bottom_radius = 0.11
+		bm.height = 0.14
+		bell.mesh = bm
+		bell.material_override = dark
+		bell.position = tank.position + Vector3(0, -0.38, 0)
+		rig.add_child(bell)
+		var nozzle := Node3D.new()
+		nozzle.position = bell.position + Vector3(0, -0.08, 0)
+		rig.add_child(nozzle)
+		nozzles.append(nozzle)
+
+	# Fuel dial between the tanks: tiny glowing gauge face.
+	var dial := MeshInstance3D.new()
+	var dm := CylinderMesh.new()
+	dm.top_radius = 0.06
+	dm.bottom_radius = 0.06
+	dm.height = 0.03
+	dial.mesh = dm
+	dial.material_override = ToyMaterials.glow(Color(1.0, 0.7, 0.2), 1.6)
+	dial.rotation_degrees.x = 90.0
+	dial.position = Vector3(0, 0.05, 0.2)
+	rig.add_child(dial)
+	# Shoulder straps.
+	for side in [-1.0, 1.0]:
+		var strap := MeshInstance3D.new()
+		var sm := BoxMesh.new()
+		sm.size = Vector3(0.07, 0.5, 0.04)
+		strap.mesh = sm
+		strap.material_override = ToyMaterials.plastic(Color(0.3, 0.32, 0.2), 0.7)
+		strap.position = Vector3(side * 0.15, 0.14, -0.06)
+		strap.rotation_degrees.x = -18.0
+		rig.add_child(strap)
+	rig.set_meta("nozzles", nozzles)
+	return rig
+
 ## Standalone gun prop (weapon pickups, menu dressing).
 static func build_gun(gun_name: String) -> Node3D:
 	var path := "res://assets/models/gun_%s.gltf" % gun_name

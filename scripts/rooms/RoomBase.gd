@@ -336,6 +336,10 @@ func scatter_coins(half_w: float, half_d: float, clusters: int = 6) -> void:
 		var dir := Vector3(rng.randf_range(-1, 1), 0, rng.randf_range(-1, 1)).normalized()
 		for i in rng.randi_range(3, 5):
 			Pickup.spawn_coin(self, center + dir * i * 1.6, 1)
+		# Every other trail ends at a jetpack gas can — flight fuel is
+		# common enough that exploring keeps the tank topped up.
+		if c % 2 == 1:
+			Pickup.spawn_fuel(self, center + dir * 8.0)
 
 ## Four walls + floor for a room shell.
 func _build_shell(width: float, depth: float, wall_height: float, floor_mat: Material, wall_mat: Material) -> void:

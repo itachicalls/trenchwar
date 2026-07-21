@@ -33,3 +33,4 @@ signal vehicle_exited
 # --- Economy / powerups ---
 signal coins_changed(amount: int)
 signal powerup_started(id: String, duration: float)
+signal fuel_changed(fuel: float, max_fuel: float)

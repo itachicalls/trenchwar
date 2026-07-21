@@ -27,6 +27,21 @@ static func plastic(color: Color, roughness: float = 0.32) -> StandardMaterial3D
 	_cache[key] = m
 	return m
 
+## Room floors: looks like the glossy plastic but with the specular tamed.
+## Full-gloss plastic() on a room-sized bright floor put a blinding white
+## highlight under the camera in the tile rooms — floors need to read matte.
+static func floor_mat(color: Color, roughness: float = 0.7) -> StandardMaterial3D:
+	var key := "f_%s_%.2f" % [color.to_html(), roughness]
+	if key in _cache:
+		return _cache[key]
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	m.roughness = maxf(roughness, 0.6)
+	m.metallic = 0.0
+	m.metallic_specular = 0.2
+	_cache[key] = m
+	return m
+
 ## Die-cast / chrome toys (Chrome Legion, tank treads, screws).
 static func metal(color: Color, roughness: float = 0.25) -> StandardMaterial3D:
 	var key := "m_%s_%.2f" % [color.to_html(), roughness]

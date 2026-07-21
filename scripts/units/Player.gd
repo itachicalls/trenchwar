@@ -24,6 +24,16 @@ var _face_cam_timer := 0.0
 var _powerups := {}
 var _shield_bubble: MeshInstance3D
 
+## Jetpack: double-tap jump to engage, hold to burn. Gas cans refill it.
+const FUEL_MAX := 100.0
+const JET_DRAIN := 22.0        ## fuel per second of burn
+const JET_LIFT := 9.5          ## target climb speed
+var fuel := FUEL_MAX
+var _jet_engaged := false
+var _jet_flames: Array = []
+var _jet_sfx_timer := 0.0
+var _fuel_warned := false
+
 ## Read by the HUD every frame for the dynamic crosshair.
 var aim_at_enemy := false
 var _aim_point := Vector3.ZERO
@@ -71,10 +81,74 @@ func _unit_ready() -> void:
 
 	_slots = [{"data": weapon.data, "gun": Game.weapon_info(Game.selected_weapon).gun, "ammo": -1}]
 
+	_build_jetpack()
+
 	Events.player_spawned.emit(self)
+	Events.fuel_changed.emit(fuel, FUEL_MAX)
 	Events.player_health_changed.emit(health.current, health.max_health)
 	Events.ammo_changed.emit(weapon.ammo, weapon.data.magazine_size)
 	Events.weapon_changed.emit(weapon.data.display_name)
+
+# ----------------------------------------------------------------- JETPACK
+
+## Strap the toy jetpack onto the soldier's back and rig unlit flame jets
+## on both nozzles (they only emit while burning).
+func _build_jetpack() -> void:
+	if body_rig == null:
+		return
+	var pack := ModelLib.build_jetpack()
+	pack.position = Vector3(0, 0.95, 0.3)   # model faces -Z, so +Z = the back
+	body_rig.add_child(pack)
+	for nozzle in pack.get_meta("nozzles", []):
+		var flame := CPUParticles3D.new()
+		flame.emitting = false
+		flame.amount = 22
+		flame.lifetime = 0.28
+		flame.direction = Vector3.DOWN
+		flame.spread = 8.0
+		flame.initial_velocity_min = 5.0
+		flame.initial_velocity_max = 8.0
+		flame.gravity = Vector3.ZERO
+		flame.scale_amount_min = 0.05
+		flame.scale_amount_max = 0.12
+		flame.color = Color(1.0, 0.65, 0.15)
+		var fm := BoxMesh.new()
+		fm.size = Vector3.ONE
+		fm.material = ToyMaterials.glow(Color(1.0, 0.6, 0.2), 3.0)
+		flame.mesh = fm
+		nozzle.add_child(flame)
+		_jet_flames.append(flame)
+
+## Called by gas can pickups.
+func refill_fuel(amount: float) -> void:
+	fuel = minf(fuel + amount, FUEL_MAX)
+	Events.fuel_changed.emit(fuel, FUEL_MAX)
+
+## Double-jump engages the pack; holding jump burns fuel for lift. Landing
+## disengages so the next flight is a deliberate double-tap again.
+func _update_jetpack(delta: float) -> void:
+	if is_on_floor():
+		_jet_engaged = false
+	elif Input.is_action_just_pressed("jump") and fuel > 0.0:
+		_jet_engaged = true
+		Fx.ring_pulse(self, global_position, Color(1.0, 0.7, 0.2), 1.2, 0.3)
+	var burning := _jet_engaged and not is_on_floor() \
+		and Input.is_action_pressed("jump") and fuel > 0.0
+	# Ran the tank dry mid-air: tell the player what refills it (once).
+	if _jet_engaged and fuel <= 0.0 and not _fuel_warned:
+		_fuel_warned = true
+		Events.notify.emit("JETPACK EMPTY — grab a GAS CAN to refuel!")
+	if burning:
+		velocity.y = move_toward(velocity.y, JET_LIFT, 55.0 * delta)
+		fuel = maxf(fuel - JET_DRAIN * delta, 0.0)
+		Events.fuel_changed.emit(fuel, FUEL_MAX)
+		_jet_sfx_timer -= delta
+		if _jet_sfx_timer <= 0.0:
+			_jet_sfx_timer = 0.22
+			Sfx.play_at("engine", global_position, -16.0)
+	for f in _jet_flames:
+		if f.emitting != burning:
+			f.emitting = burning
 
 # ------------------------------------------------------------- WEAPON SLOTS
 
@@ -303,6 +377,7 @@ func _update_movement(delta: float) -> void:
 		velocity.y = 13.0   # ~3.5 u apex: book-stair steps are jumpable
 		Sfx.play("step", -12.0)
 		Fx.dust(self, global_position)
+	_update_jetpack(delta)
 	move_and_slide()
 
 	# Landing feedback: camera dip + dust kick.
@@ -313,7 +388,11 @@ func _update_movement(delta: float) -> void:
 	_was_on_floor = is_on_floor()
 
 	var moving := Vector2(velocity.x, velocity.z).length() > 0.5
-	animate_waddle(delta, moving and is_on_floor())
+	# Airborne = flying pose (legs tucked); grounded = the usual gait.
+	if not is_on_floor():
+		play_anim("Jump_Idle", 0.2)
+	else:
+		animate_waddle(delta, moving)
 	if moving and is_on_floor():
 		_step_timer -= delta
 		if _step_timer <= 0.0:

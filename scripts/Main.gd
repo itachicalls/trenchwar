@@ -335,10 +335,10 @@ func _show_main_menu() -> void:
 	_spacer(box, 22)
 	if Game.is_touch():
 		_subtitle(box, "LEFT THUMB move (push to rim = sprint)   RIGHT THUMB drag to look
-FIRE / JUMP / AIM buttons bottom-right   E interact   1-2-3 squad orders", 13, Color(0.72, 0.76, 0.7))
+FIRE / JUMP / AIM buttons bottom-right   double-tap JUMP + hold = JETPACK   E interact   1-2-3 squad orders", 13, Color(0.72, 0.76, 0.7))
 	else:
-		_subtitle(box, "WASD move   SHIFT sprint   SPACE jump   MOUSE aim/fire   RMB zoom
-R reload   Q swap weapon   E interact / rescue / vehicles   1-2-3 squad orders   ESC pause", 13, Color(0.72, 0.76, 0.7))
+		_subtitle(box, "WASD move   SHIFT sprint   SPACE jump   double-tap SPACE + hold = JETPACK   MOUSE aim/fire
+RMB zoom   R reload   Q swap weapon   E interact / rescue / vehicles   1-2-3 squad orders   ESC pause", 13, Color(0.72, 0.76, 0.7))
 		if OS.has_feature("web"):
 			_subtitle(box, "Browser: click once in-mission to lock the mouse.", 12, Color(0.7, 0.82, 0.95))
 	var version := Label.new()
