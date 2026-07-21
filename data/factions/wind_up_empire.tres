@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/FactionData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "wind_up_empire"
+display_name = "Wind-Up Empire"
+description = "Clockwork war machines from the antique shelf. Slow, relentless, armored in tin."
+primary_color = Color(0.65, 0.45, 0.2, 1.0)
+secondary_color = Color(0.4, 0.28, 0.12, 1.0)
+accent_color = Color(0.9, 0.75, 0.35, 1.0)
+health_multiplier = 1.4
+damage_multiplier = 1.1
+speed_multiplier = 0.7

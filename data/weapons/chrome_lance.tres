@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/WeaponData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Chrome Lance"
+damage = 22.0
+fire_rate = 0.45
+magazine_size = 3
+reload_time = 2.8
+projectile_speed = 90.0
+projectile_scale = 1.8
+spread_degrees = 0.2
+automatic = false
+pellets = 1
+projectile_color = Color(1.0, 0.3, 0.4, 1.0)
+sound = "twang"
+recoil = 1.0

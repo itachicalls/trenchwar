@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/WeaponData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Nerf Scattergun"
+damage = 9.0
+fire_rate = 1.6
+magazine_size = 6
+reload_time = 2.0
+projectile_speed = 40.0
+projectile_scale = 1.4
+spread_degrees = 7.0
+automatic = false
+pellets = 5
+projectile_color = Color(1.0, 0.45, 0.15, 1.0)
+sound = "shoot_heavy"
+recoil = 2.2

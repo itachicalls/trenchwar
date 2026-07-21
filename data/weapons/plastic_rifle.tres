@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/WeaponData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Plastic Rifle"
+damage = 17.0
+fire_rate = 7.0
+magazine_size = 24
+reload_time = 1.4
+projectile_speed = 55.0
+spread_degrees = 1.2
+automatic = true
+pellets = 1
+projectile_color = Color(1.0, 0.85, 0.3, 1.0)
+sound = "shoot"
+recoil = 1.0

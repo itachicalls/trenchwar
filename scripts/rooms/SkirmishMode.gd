@@ -1,0 +1,90 @@
+class_name SkirmishMode
+extends ArenaBase
+## TEAM SKIRMISH (casual, vs bots): Green Army + you against the Chrome
+## Legion in the Sandbox. Everyone respawns; first team to SCORE_TARGET
+## eliminations takes the match.
+
+const SCORE_TARGET := 25
+const BOT_RESPAWN := 5.0
+const PLAYER_RESPAWN := 4.0
+
+const GREEN := "res://data/factions/green_army.tres"
+const CHROME := "res://data/factions/chrome_legion.tres"
+const MIX := ["trooper", "scout", "trooper", "heavy", "scout", "sniper", "trooper"]
+
+var green_score := 0
+var chrome_score := 0
+var _pending: Array[Dictionary] = []   # bot respawn queue
+var _player_respawn := -1.0
+
+func _green_base() -> Vector3:
+	return Vector3(-arena_half + 10, 1, 0)
+
+func _chrome_base() -> Vector3:
+	return Vector3(arena_half - 10, 1, 0)
+
+func _setup_mode() -> void:
+	Missions.start_mission("SKIRMISH — THE SANDBOX")
+	spawn_player(_green_base())
+	for i in 5:
+		spawn_bot(GREEN, _green_base() + Vector3(3 + i * 2.5, 0, (i - 2) * 4.0), MIX[i])
+	for i in 7:
+		spawn_bot(CHROME, _chrome_base() + Vector3(-3 - (i % 3) * 2.5, 0, (i - 3) * 4.0), MIX[i])
+	_update_banner()
+	sub_banner.text = "FIRST TO %d  •  CASUAL VS BOTS" % SCORE_TARGET
+	# Weapon drops: the dune rewards aggression, the flanks reward rotation.
+	spawn_weapon_drop(Vector3(0, 4.2, 0), "marble", 45.0)
+	spawn_weapon_drop(Vector3(0, 0, -arena_half * 0.55), "scatter")
+	spawn_weapon_drop(Vector3(0, 0, arena_half * 0.55), "sniper")
+	spawn_weapon_drop(Vector3(-arena_half * 0.55, 0, 0), "soaker")
+	spawn_weapon_drop(Vector3(arena_half * 0.55, 0, 0), "repeater")
+	Events.notify.emit("SKIRMISH: push the sandcastles, hold the dune. First to %d!" % SCORE_TARGET)
+
+func _process(delta: float) -> void:
+	super(delta)
+	if _match_over or not Game.is_playing():
+		return
+	for job in _pending.duplicate():
+		job.t -= delta
+		if job.t <= 0.0:
+			_pending.erase(job)
+			var base: Vector3 = _green_base() if job.team == GREEN else _chrome_base()
+			spawn_bot(job.team, base + Vector3(randf_range(-4, 4), 0, randf_range(-8, 8)), job.variant)
+	if _player_respawn > 0.0:
+		_player_respawn -= delta
+		banner.text = "REDEPLOYING IN %d..." % ceili(_player_respawn)
+		if _player_respawn <= 0.0:
+			spawn_player(_green_base())
+			_update_banner()
+
+func _on_arena_unit_died(unit: Node) -> void:
+	if _match_over or not (unit is CombatBot):
+		return
+	var team: String = unit.faction.id
+	if team == "green_army":
+		chrome_score += 1
+		_pending.append({"team": GREEN, "t": BOT_RESPAWN, "variant": unit.variant})
+	else:
+		green_score += 1
+		Game.kills += 1
+		_pending.append({"team": CHROME, "t": BOT_RESPAWN, "variant": unit.variant})
+	_update_banner()
+	_check_win()
+
+func _on_player_died() -> void:
+	if _match_over:
+		return
+	chrome_score += 1
+	_update_banner()
+	_check_win()
+	if not _match_over:
+		_player_respawn = PLAYER_RESPAWN
+
+func _update_banner() -> void:
+	banner.text = "GREEN  %d   —   %d  CHROME" % [green_score, chrome_score]
+
+func _check_win() -> void:
+	if green_score >= SCORE_TARGET:
+		win_match("SKIRMISH WON  %d - %d" % [green_score, chrome_score])
+	elif chrome_score >= SCORE_TARGET:
+		lose_match("Chrome takes the sandbox %d - %d." % [chrome_score, green_score])

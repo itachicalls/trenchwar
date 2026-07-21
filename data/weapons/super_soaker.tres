@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/WeaponData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Super Soaker XL"
+damage = 8.0
+fire_rate = 14.0
+magazine_size = 60
+reload_time = 1.8
+projectile_speed = 48.0
+projectile_scale = 0.9
+spread_degrees = 2.6
+automatic = true
+pellets = 1
+projectile_color = Color(0.35, 0.75, 1.0, 1.0)
+sound = "shoot"
+recoil = 0.5

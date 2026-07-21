@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/WeaponData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Dart Sniper"
+damage = 70.0
+fire_rate = 0.9
+magazine_size = 5
+reload_time = 2.2
+projectile_speed = 95.0
+projectile_scale = 1.6
+spread_degrees = 0.1
+automatic = false
+pellets = 1
+projectile_color = Color(0.3, 1.0, 0.55, 1.0)
+sound = "shoot_heavy"
+recoil = 2.6

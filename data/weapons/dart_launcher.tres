@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/WeaponData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Wing-Mounted Dart Pods"
+damage = 16.0
+fire_rate = 6.0
+magazine_size = 40
+reload_time = 2.2
+projectile_speed = 70.0
+projectile_scale = 1.4
+spread_degrees = 1.5
+automatic = true
+pellets = 1
+projectile_color = Color(1.0, 0.5, 0.1, 1.0)
+sound = "shoot"
+recoil = 0.4

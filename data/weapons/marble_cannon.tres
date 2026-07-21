@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/WeaponData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Marble Cannon"
+damage = 45.0
+fire_rate = 0.8
+magazine_size = 4
+reload_time = 2.4
+projectile_speed = 38.0
+projectile_scale = 2.6
+spread_degrees = 0.2
+automatic = false
+pellets = 1
+projectile_color = Color(0.5, 0.8, 1.0, 1.0)
+sound = "shoot_heavy"
+explosive_radius = 2.5
+recoil = 3.0

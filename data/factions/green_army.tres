@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/FactionData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "green_army"
+display_name = "Green Army"
+description = "Classic plastic soldiers. Balanced, disciplined, everywhere. The player's faction."
+primary_color = Color(0.35, 0.55, 0.25, 1.0)
+secondary_color = Color(0.2, 0.32, 0.15, 1.0)
+accent_color = Color(0.9, 0.85, 0.6, 1.0)
+health_multiplier = 1.0
+damage_multiplier = 1.0
+speed_multiplier = 1.0
