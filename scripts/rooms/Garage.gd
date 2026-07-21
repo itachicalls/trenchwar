@@ -282,7 +282,7 @@ func _spawn_units() -> void:
 		{"route": [Vector3(40, 1, 20), Vector3(56, 1, 34), Vector3(30, 1, 34)], "mix": ["trooper", "scout"]},
 		{"route": [Vector3(-40, 1, -44), Vector3(-16, 1, -50), Vector3(-30, 1, -34)], "mix": ["scout", "sniper"]},
 		{"route": [Vector3(-4, 40.2, -ROOM_D / 2 + 10), Vector3(12, 40.2, -ROOM_D / 2 + 10)], "mix": ["sniper", "trooper"]},   # shelf top
-		{"route": [Vector3(48, 1, -36)], "mix": ["heavy", "heavy"]},   # depot guards
+		{"route": [Vector3(48, 1, -36)], "mix": ["juggernaut", "heavy"]},   # depot guards
 		{"route": [Vector3(-52, 1, 44), Vector3(-30, 1, 50), Vector3(-44, 1, 34)], "mix": ["trooper", "trooper"]},
 	]
 	for patrol in patrols:
@@ -308,12 +308,15 @@ func _spawn_units() -> void:
 	tank2.rotation_degrees.y = 100.0
 
 func _spawn_pickups_and_toys() -> void:
+	scatter_coins(ROOM_W * 0.4, ROOM_D * 0.4)
 	for pos in [Vector3(-30, 0, 16), Vector3(18, 0, -10), Vector3(-52, 21.6, -26), Vector3(48, 0, 2), Vector3(6, 0, 40)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(-14, 0, -26), Vector3(34, 0, 26), Vector3(-44, 0, -12), Vector3(58, 0, 42)]:
 		Pickup.spawn_parts(self, pos, 5)
 	for pos in [Vector3(2, 0, 6), Vector3(-38, 0, 30), Vector3(28, 0, -24)]:
 		Pickup.spawn_ammo(self, pos)
+	spawn_weapon_drop(Vector3(40, 0, 34), "sniper")
+	spawn_weapon_drop(Vector3(-22, 0, -32), "marble")
 	var toy_spots := [
 		["Wrench Wendy", Vector3(-52, 21.6, -34)],        # workbench top
 		["Lugnut", Vector3(6, 0.5, -26)],                  # under the car

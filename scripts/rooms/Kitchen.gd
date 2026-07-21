@@ -325,12 +325,15 @@ func _spawn_units() -> void:
 	tank.rotation_degrees.y = -50.0
 
 func _spawn_pickups_and_toys() -> void:
+	scatter_coins(ROOM_W * 0.4, ROOM_D * 0.4)
 	for pos in [Vector3(-30, 0, 12), Vector3(14, 0, -16), Vector3(-6, 21.2, 2), Vector3(46, 0, 0), Vector3(-16, 26.2, -ROOM_D / 2 + 12)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(-18, 0, -12), Vector3(28, 0, 8), Vector3(52, 0, -22), Vector3(2, 0, 32)]:
 		Pickup.spawn_parts(self, pos, 5)
 	for pos in [Vector3(-36, 0, 2), Vector3(20, 0, 34), Vector3(0, 21.2, -4)]:
 		Pickup.spawn_ammo(self, pos)
+	spawn_weapon_drop(Vector3(38, 0, 20), "soaker")
+	spawn_weapon_drop(Vector3(-24, 0, 24), "repeater")
 	var toy_spots := [
 		["Chef Whiskers", Vector3(-34, 26.6, -ROOM_D / 2 + 12)],  # in the sink
 		["Sgt. Spoon", Vector3(-6, 21.6, 8)],                     # on the table
@@ -373,7 +376,7 @@ func _send_counterattack() -> void:
 	_counterattack_sent = true
 	Events.notify.emit("WARNING: Chrome dropship on the counter! Reinforcements rappelling down!")
 	var chrome: FactionData = load("res://data/factions/chrome_legion.tres")
-	var mix := ["heavy", "trooper", "scout", "scout", "sniper"]
+	var mix := ["heavy", "commando", "scout", "grenadier", "sniper"]
 	for i in 5:
 		var enemy := EnemySoldier.new()
 		enemy.faction = chrome

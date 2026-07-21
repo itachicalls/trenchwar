@@ -48,7 +48,7 @@ func _setup_mode() -> void:
 		var corner := _squad_corner(id)
 		var n := SQUAD_SIZE - 1 if id == "green_army" else SQUAD_SIZE
 		for i in n:
-			spawn_bot(SQUADS[id], corner + Vector3((i - 1) * 3.5, 0, i * 2.5), ["trooper", "scout", "heavy"][i % 3])
+			spawn_bot(SQUADS[id], corner + Vector3((i - 1) * 3.5, 0, i * 2.5), ["commando", "scout", "heavy"][i % 3])
 	spawn_player(_squad_corner("green_army") + Vector3(0, 0, -4))
 	_build_zone_wall()
 	# Loot spread: strong weapons pull squads toward the center early.

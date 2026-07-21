@@ -6,23 +6,36 @@ extends Unit
 enum AiState { PATROL, ALERT, COMBAT }
 
 ## Enemy variations, all one script + data. Set BEFORE add_child().
-##   trooper — baseline SMG line infantry
-##   scout   — fast, fragile, harassing pistol fire
-##   heavy   — slow shotgun wall with double health, bigger model
-##   sniper  — long-range single shots that force you to move
+##   trooper    — baseline SMG line infantry
+##   scout      — fast, fragile, harassing pistol fire
+##   heavy      — slow shotgun wall with double health, bigger model
+##   sniper     — long-range single shots that force you to move
+##   commando   — elite carbine trooper: faster, tougher, longer bursts
+##   grenadier  — lobs explosive mortar shells from mid range
+##   juggernaut — walking bunker: huge, slow, brutal up close
+## burst/pause tune the fire rhythm: N shots, then a breather.
 const VARIANTS := {
 	"trooper": {"gun": "SMG", "weapon": "res://data/weapons/chrome_blaster.tres",
 		"health": 100.0, "speed": 6.0, "scale": 1.0, "tint": Color.WHITE,
-		"vision": 18.0, "attack": 14.0},
+		"vision": 18.0, "attack": 14.0, "burst": 4, "pause": 0.7},
 	"scout": {"gun": "Pistol", "weapon": "res://data/weapons/chrome_needler.tres",
 		"health": 55.0, "speed": 8.5, "scale": 0.88, "tint": Color(1.15, 0.95, 0.8),
-		"vision": 20.0, "attack": 12.0},
+		"vision": 20.0, "attack": 12.0, "burst": 3, "pause": 0.5},
 	"heavy": {"gun": "Shotgun", "weapon": "res://data/weapons/chrome_scatter.tres",
 		"health": 240.0, "speed": 3.8, "scale": 1.22, "tint": Color(0.65, 0.7, 0.85),
-		"vision": 16.0, "attack": 10.0},
+		"vision": 16.0, "attack": 10.0, "burst": 2, "pause": 1.1},
 	"sniper": {"gun": "Sniper", "weapon": "res://data/weapons/chrome_lance.tres",
 		"health": 70.0, "speed": 5.0, "scale": 1.0, "tint": Color(0.9, 0.7, 0.75),
-		"vision": 30.0, "attack": 26.0},
+		"vision": 30.0, "attack": 26.0, "burst": 1, "pause": 1.6},
+	"commando": {"gun": "AK", "weapon": "res://data/weapons/chrome_carbine.tres",
+		"health": 150.0, "speed": 7.2, "scale": 1.05, "tint": Color(0.75, 0.9, 1.2),
+		"vision": 22.0, "attack": 16.0, "burst": 6, "pause": 0.6},
+	"grenadier": {"gun": "GrenadeLauncher", "weapon": "res://data/weapons/chrome_mortar.tres",
+		"health": 120.0, "speed": 4.6, "scale": 1.08, "tint": Color(1.1, 0.85, 0.6),
+		"vision": 24.0, "attack": 22.0, "burst": 1, "pause": 1.8},
+	"juggernaut": {"gun": "ShortCannon", "weapon": "res://data/weapons/chrome_scatter.tres",
+		"health": 420.0, "speed": 3.0, "scale": 1.4, "tint": Color(0.5, 0.55, 0.7),
+		"vision": 15.0, "attack": 11.0, "burst": 3, "pause": 0.9},
 }
 
 @export var patrol_points: Array[Vector3] = []
@@ -50,6 +63,8 @@ var _strafe_timer := 0.0
 var _lost_sight_time := 0.0
 var _stuck_time := 0.0
 var _last_pos := Vector3.ZERO
+var _burst_left := 0
+var _burst_pause := 0.0
 
 func _body_params() -> Dictionary:
 	var cfg: Dictionary = VARIANTS[variant]
@@ -92,8 +107,9 @@ func _physics_process(delta: float) -> void:
 	_detect_stuck(delta)
 	animate_waddle(delta, Vector2(velocity.x, velocity.z).length() > 0.5)
 
-## Wanting to move but going nowhere = wedged against furniture. After 1.5s,
-## snap back onto the navmesh and path around whatever we ground against.
+## Wanting to move but going nowhere = wedged against something. First try a
+## HOP (soldiers vault low clutter like real toys), then snap to the navmesh
+## as a last resort.
 func _detect_stuck(delta: float) -> void:
 	var wants_move := Vector2(velocity.x, velocity.z).length() > 1.0
 	var progress := global_position.distance_to(_last_pos)
@@ -102,14 +118,44 @@ func _detect_stuck(delta: float) -> void:
 		_stuck_time += delta
 	else:
 		_stuck_time = 0.0
-	if _stuck_time > 1.5:
+		return
+	# Early response: obstacle is knee-high and clear above? Vault it.
+	if _stuck_time > 0.4 and is_on_floor() and _try_hop():
+		_stuck_time = 0.0
+		return
+	if _stuck_time > 1.8:
 		_stuck_time = 0.0
 		var map := get_world_3d().navigation_map
 		var jitter := Vector3(randf_range(-3, 3), 0, randf_range(-3, 3))
 		var free_point := NavigationServer3D.map_get_closest_point(map, global_position + jitter)
 		global_position = free_point + Vector3.UP * 0.2
+		Fx.dust(self, global_position)
 		if state == AiState.COMBAT:
 			state = AiState.ALERT   # re-path via the navmesh instead of beelining
+
+## Hop if blocked at knee height but clear at head height (low crates, books,
+## sandbag lips). Same jump power as the player, so parity feels fair.
+func _try_hop() -> bool:
+	var fwd := Vector3(velocity.x, 0, velocity.z)
+	if fwd.length() < 0.5:
+		fwd = -body_rig.global_transform.basis.z if body_rig != null else -global_transform.basis.z
+	fwd = fwd.normalized()
+	var space := get_world_3d().direct_space_state
+	var knee := PhysicsRayQueryParameters3D.create(
+		global_position + Vector3.UP * 0.35, global_position + Vector3.UP * 0.35 + fwd * 1.2)
+	knee.collision_mask = 0b0001
+	if space.intersect_ray(knee).is_empty():
+		return false   # nothing low blocking; stuck on something else
+	var head := PhysicsRayQueryParameters3D.create(
+		global_position + Vector3.UP * 2.2, global_position + Vector3.UP * 2.2 + fwd * 2.0)
+	head.collision_mask = 0b0001
+	if not space.intersect_ray(head).is_empty():
+		return false   # a wall, not a ledge — don't bonk
+	velocity.y = 13.0
+	velocity.x = fwd.x * move_speed
+	velocity.z = fwd.z * move_speed
+	Fx.dust(self, global_position)
+	return true
 
 ## ---- decision layer (runs at 4 Hz) ----
 func _think() -> void:
@@ -212,12 +258,35 @@ func _do_combat(delta: float) -> void:
 		velocity.z = wish.z * speed
 	face_direction(to_target, delta, 8.0)
 
-	if dist < attack_range and _has_line_of_sight(target):
-		# Toy soldiers are not marksmen: aim error shrinks up close but never
-		# reaches zero — point-blank enemies shouldn't be laser-accurate.
-		var error: float = 0.4 + clampf(dist / attack_range, 0.0, 1.0) * 1.1
-		var aim_point: Vector3 = target.global_position + Vector3.UP * 0.8 + Vector3(randf_range(-error, error), randf_range(-error * 0.5, error * 0.5), randf_range(-error, error))
-		weapon.try_fire(aim_dir_at(aim_point))
+	_fire_control(delta, dist)
+
+## Burst-fire rhythm: N aimed shots, then a breather. Reads as a soldier
+## working the trigger instead of a sprinkler, and the pauses give the player
+## windows to push. Shots lead moving targets, so strafing in a straight
+## line no longer trivializes every fight.
+func _fire_control(delta: float, dist: float) -> void:
+	_burst_pause = maxf(_burst_pause - delta, 0.0)
+	if dist >= attack_range or not _has_line_of_sight(target):
+		return
+	var cfg: Dictionary = VARIANTS[variant]
+	if _burst_left <= 0:
+		if _burst_pause > 0.0:
+			return
+		_burst_left = int(cfg.burst)
+	# Aim error shrinks up close but never reaches zero.
+	var error: float = 0.3 + clampf(dist / attack_range, 0.0, 1.0) * 0.9
+	var aim_point: Vector3 = target.global_position + Vector3.UP * 0.8
+	if target is CharacterBody3D:
+		# Lead by ~70% of projectile travel time; imperfect on purpose.
+		aim_point += (target as CharacterBody3D).velocity * (dist / weapon.data.projectile_speed) * 0.7
+	if weapon.data.explosive_radius > 0.0:
+		# Mortars loft: aim above the target so the slow shell arcs in.
+		aim_point += Vector3.UP * dist * 0.18
+	aim_point += Vector3(randf_range(-error, error), randf_range(-error * 0.5, error * 0.5), randf_range(-error, error))
+	if weapon.try_fire(aim_dir_at(aim_point)):
+		_burst_left -= 1
+		if _burst_left <= 0:
+			_burst_pause = float(cfg.pause) * randf_range(0.8, 1.25)
 
 func _move_along_path(delta: float, speed: float) -> void:
 	if _nav.is_navigation_finished():

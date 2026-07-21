@@ -95,9 +95,12 @@ func _drop_loot() -> void:
 	if randf() < 0.6:
 		Pickup.spawn_parts(scene, global_position, randi_range(2, 6))
 	# Coins scatter from every kill — the store economy.
-	for i in randi_range(1, 3):
-		var jitter := Vector3(randf_range(-0.8, 0.8), 0, randf_range(-0.8, 0.8))
+	for i in randi_range(2, 5):
+		var jitter := Vector3(randf_range(-1.0, 1.0), 0, randf_range(-1.0, 1.0))
 		Pickup.spawn_coin(scene, global_position + jitter, 1)
+	# Elites pay out a bonus purse.
+	if base_health >= 150.0:
+		Pickup.spawn_coin(scene, global_position, 5)
 	# Rare powerup drop: rapid fire / sugar rush / bubble shield.
 	if randf() < 0.07:
 		Pickup.spawn_powerup(scene, global_position + Vector3(0, 0, 0.5), Pickup.random_powerup())

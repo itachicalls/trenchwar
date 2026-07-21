@@ -331,12 +331,15 @@ func _spawn_units() -> void:
 	plane.rotation_degrees.y = 120.0
 
 func _spawn_pickups_and_toys() -> void:
+	scatter_coins(ROOM_W * 0.4, ROOM_D * 0.4)
 	for pos in [Vector3(-36, 0, 8), Vector3(8, 0, 12), Vector3(40, 2, 34), Vector3(-24, 3.4, -24), Vector3(60, 0, -14)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(-16, 0, -12), Vector3(26, 0, 14), Vector3(-52, 0, -18), Vector3(52, 0, 48)]:
 		Pickup.spawn_parts(self, pos, 5)
 	for pos in [Vector3(-4, 0, 30), Vector3(20, 0, -20), Vector3(-44, 0, 36)]:
 		Pickup.spawn_ammo(self, pos)
+	spawn_weapon_drop(Vector3(34, 0, 6), "marble")
+	spawn_weapon_drop(Vector3(-30, 0, -20), "sniper")
 	var toy_spots := [
 		["Acorn Annie", Vector3(-52, 0.5, -28)],   # oak tree roots
 		["Dune Dougie", Vector3(46, 2.2, 26)],     # sandbox dune
@@ -398,7 +401,7 @@ func _send_final_wave() -> void:
 	_final_wave_sent = true
 	Events.notify.emit("FINAL PUSH: the Legion is throwing everything at the lawn!")
 	var chrome: FactionData = load("res://data/factions/chrome_legion.tres")
-	var mix := ["heavy", "sniper", "heavy", "scout", "trooper", "scout"]
+	var mix := ["juggernaut", "sniper", "commando", "scout", "grenadier", "scout"]
 	for i in 6:
 		var enemy := EnemySoldier.new()
 		enemy.faction = chrome

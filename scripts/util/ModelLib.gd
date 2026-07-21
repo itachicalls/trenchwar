@@ -151,6 +151,10 @@ static func build_tank(target_length: float = 3.4) -> Node3D:
 	return rig
 
 ## Hides all bone-attached weapon props except the requested one.
+## Public: swap which in-hand gun prop is visible on a built rig.
+static func set_gun(rig: Node, keep: String) -> void:
+	_keep_only_gun(rig, keep)
+
 static func _keep_only_gun(model: Node, keep: String) -> void:
 	for gun_name in CHARACTER_GUNS:
 		var attachment: Node = model.find_child(gun_name.replace(".", "_"), true, false)

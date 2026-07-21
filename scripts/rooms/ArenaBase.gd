@@ -169,67 +169,6 @@ func spawn_bot(faction_path: String, pos: Vector3, variant_name: String = "troop
 	bot.position = pos
 	return bot
 
-## ---- weapon drops -----------------------------------------------------------
-## Floating supply crate that swaps the player's weapon on touch (bots keep
-## theirs — this is the player's power curve inside a match). Respawns later.
-func spawn_weapon_drop(pos: Vector3, weapon_id: String, respawn_after: float = 30.0) -> void:
-	var info: Dictionary = Game.weapon_info(weapon_id)
-	var area := Area3D.new()
-	area.collision_layer = 0
-	area.collision_mask = 0b0010
-	var cs := CollisionShape3D.new()
-	var sphere := SphereShape3D.new()
-	sphere.radius = 1.6
-	cs.shape = sphere
-	area.add_child(cs)
-	add_child(area)
-	area.global_position = pos + Vector3.UP * 1.2
-
-	var vis := Node3D.new()
-	area.add_child(vis)
-	var crate := ModelLib.build_prop("crate", 1.8)
-	if crate != null:
-		crate.position.y = -0.9
-		vis.add_child(crate)
-	# Weapon-colored beacon ring + light so drops read across the arena.
-	var wd: WeaponData = load(info.path)
-	var ring := MeshInstance3D.new()
-	var tm := TorusMesh.new()
-	tm.inner_radius = 1.0
-	tm.outer_radius = 1.2
-	ring.mesh = tm
-	ring.material_override = ToyMaterials.glow(wd.projectile_color, 2.4)
-	ring.position.y = -1.0
-	vis.add_child(ring)
-	var light := OmniLight3D.new()
-	light.light_color = wd.projectile_color
-	light.light_energy = 1.6
-	light.omni_range = 7.0
-	vis.add_child(light)
-
-	var taken := {"v": false}
-	area.body_entered.connect(func(body: Node3D):
-		if taken.v or body != Game.player:
-			return
-		taken.v = true
-		Game.player.weapon.set_data(wd)
-		Events.notify.emit("PICKED UP: %s" % wd.display_name.to_upper())
-		Sfx.play("pickup")
-		vis.visible = false
-		area.set_deferred("monitoring", false)
-		get_tree().create_timer(respawn_after).timeout.connect(func():
-			if is_instance_valid(area):
-				taken.v = false
-				vis.visible = true
-				area.set_deferred("monitoring", true)))
-
-	# Idle motion: slow spin + bob.
-	var tw := area.create_tween().set_loops()
-	tw.tween_property(vis, "position:y", 0.35, 1.2).set_trans(Tween.TRANS_SINE)
-	tw.tween_property(vis, "position:y", -0.35, 1.2).set_trans(Tween.TRANS_SINE)
-	var spin := area.create_tween().set_loops()
-	spin.tween_property(vis, "rotation:y", TAU, 4.0).from(0.0)
-
 ## ---- UI --------------------------------------------------------------------
 func _build_mode_ui() -> void:
 	mode_ui = CanvasLayer.new()

@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 display_name = "Chrome Needler"
-damage = 3.5
+damage = 7.5
 fire_rate = 6.0
 magazine_size = 24
 reload_time = 1.8

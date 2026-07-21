@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 display_name = "Chrome Scatter Cannon"
-damage = 5.0
+damage = 10.0
 fire_rate = 0.8
 magazine_size = 6
 reload_time = 2.6

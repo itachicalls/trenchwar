@@ -89,6 +89,13 @@ var fader: ColorRect = null
 func _ready() -> void:
 	# Menus (incl. pause) must keep processing while the tree is paused.
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	# PERF (web): the browser build runs the Compatibility renderer where 4x
+	# MSAA and 4K shadow atlases are brutal. Halving both is invisible at toy
+	# scale and roughly doubles the frame rate on integrated GPUs.
+	if OS.has_feature("web"):
+		get_viewport().msaa_3d = Viewport.MSAA_2X
+		get_viewport().positional_shadow_atlas_size = 2048
+		RenderingServer.directional_shadow_atlas_set_size(2048, true)
 	# Screen fader on its own top layer, always available.
 	var fade_layer := CanvasLayer.new()
 	fade_layer.layer = 99
@@ -118,6 +125,13 @@ func _ready() -> void:
 			var img := get_viewport().get_texture().get_image()
 			img.save_png("res://screenshots/menu.png")
 			print("MENUSHOT OK")
+			get_tree().quit())
+	if "--barrackshot" in args:
+		_show_barracks()
+		get_tree().create_timer(2.0).timeout.connect(func():
+			var img := get_viewport().get_texture().get_image()
+			img.save_png("res://screenshots/barracks.png")
+			print("BARRACKSHOT OK")
 			get_tree().quit())
 	if "--squadtest" in args:
 		_deploy_mission("bedroom")
@@ -285,7 +299,7 @@ func _show_main_menu() -> void:
 	_button(box, "QUIT", func(): get_tree().quit(), UiTheme.RED)
 	_spacer(box, 22)
 	_subtitle(box, "WASD move   SHIFT sprint   SPACE jump   MOUSE aim/fire   RMB zoom
-R reload   E interact / rescue / vehicles   1-2-3 squad orders   ESC pause", 13, Color(0.72, 0.76, 0.7))
+R reload   Q swap weapon   E interact / rescue / vehicles   1-2-3 squad orders   ESC pause", 13, Color(0.72, 0.76, 0.7))
 	if OS.has_feature("web"):
 		_subtitle(box, "Browser: click once in-mission to lock the mouse.", 12, Color(0.7, 0.82, 0.95))
 	var version := Label.new()
@@ -304,10 +318,21 @@ func _show_campaign() -> void:
 	_subtitle(box, "The Chrome Legion took the house. Take it back, room by room.", 15, Color(0.85, 0.87, 0.8))
 	_subtitle(box, "COINS  %d" % Game.coins, 15, UiTheme.AMBER)
 	_spacer(box, 14)
+	# Chapters unlock in order: a room is playable once the previous one falls.
+	var prev_beaten := true
 	for id in MISSION_ORDER:
 		var mission_id: String = id
-		_button(box, MISSIONS[id][0], func(): _show_briefing(mission_id),
-			UiTheme.GREEN if not id.begins_with("trench") else UiTheme.ORANGE)
+		var beaten: bool = id in Game.completed_missions
+		var accent: Color = UiTheme.GREEN if not id.begins_with("trench") else UiTheme.ORANGE
+		var label: String = MISSIONS[id][0]
+		if beaten:
+			label += "   [CLEARED]"
+		if prev_beaten:
+			_button(box, label, func(): _show_briefing(mission_id), accent)
+		else:
+			var locked := _button(box, "LOCKED  —  clear the previous chapter", func(): pass, Color(0.5, 0.52, 0.46))
+			locked.disabled = true
+		prev_beaten = beaten
 	_spacer(box, 10)
 	_button(box, "BACK", _show_main_menu)
 
@@ -543,19 +568,9 @@ func _skin_row(box: VBoxContainer, skin: Dictionary) -> void:
 	h.add_theme_constant_override("separation", 14)
 	row.add_child(h)
 
-	# Plastic swatch: the skin tint over the base green mold color.
-	var swatch := Panel.new()
-	swatch.custom_minimum_size = Vector2(34, 34)
-	swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var ss := StyleBoxFlat.new()
-	var base := Color(0.78, 1.0, 0.72)
-	var t: Color = skin.tint
-	ss.bg_color = Color(clampf(base.r * t.r, 0, 1), clampf(base.g * t.g, 0, 1), clampf(base.b * t.b, 0, 1))
-	ss.set_corner_radius_all(17)
-	ss.border_color = Color(0, 0, 0, 0.5)
-	ss.set_border_width_all(2)
-	swatch.add_theme_stylebox_override("panel", ss)
-	h.add_child(swatch)
+	# Live 3D portrait: the actual soldier mold in this plastic batch,
+	# idling and slowly turning on a dime like a store display.
+	h.add_child(_skin_portrait(skin))
 
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -593,6 +608,50 @@ func _skin_row(box: VBoxContainer, skin: Dictionary) -> void:
 				Sfx.play("pickup")
 				_show_barracks())
 	h.add_child(btn)
+
+## Miniature 3D viewport rendering the real (tinted) soldier model.
+func _skin_portrait(skin: Dictionary) -> Control:
+	var container := SubViewportContainer.new()
+	container.stretch = true
+	container.custom_minimum_size = Vector2(84, 84)
+	container.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var vp := SubViewport.new()
+	vp.own_world_3d = true
+	vp.world_3d = World3D.new()
+	vp.transparent_bg = true
+	vp.size = Vector2i(168, 168)
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	container.add_child(vp)
+
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.07, 0.09, 0.06, 0.0)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.72, 0.76, 0.85)
+	env.ambient_light_energy = 1.3
+	var we := WorldEnvironment.new()
+	we.environment = env
+	vp.add_child(we)
+	var key := DirectionalLight3D.new()
+	key.rotation_degrees = Vector3(-38, 28, 0)
+	key.light_energy = 1.5
+	vp.add_child(key)
+
+	var green: FactionData = load("res://data/factions/green_army.tres")
+	var rig := ModelLib.build_character(green, false, Game.weapon_info(Game.selected_weapon).gun, skin.tint, 1.0)
+	vp.add_child(rig)
+
+	var cam := Camera3D.new()
+	cam.fov = 32.0
+	vp.add_child(cam)
+	cam.position = Vector3(0, 1.15, -2.9)
+	cam.look_at(Vector3(0, 0.72, 0), Vector3.UP)
+	# Tweens can only be created inside the tree — start the display spin
+	# once the menu row is actually added.
+	container.tree_entered.connect(func():
+		var spin := rig.create_tween().set_loops()
+		spin.tween_property(rig, "rotation:y", TAU, 7.0).from(0.0))
+	return container
 
 # ------------------------------------------------------------------ STORE
 
@@ -667,7 +726,7 @@ func _weapon_row(box: VBoxContainer, w: Dictionary, back: Callable) -> void:
 			Sfx.play("pickup")
 			# Mid-mission equip applies immediately.
 			if Game.player != null and is_instance_valid(Game.player):
-				Game.player.weapon.set_data(load(w.path))
+				Game.player.set_loadout(load(w.path), w.gun)
 			_show_store(back))
 	else:
 		btn.text = "%d c" % w.cost
@@ -764,6 +823,8 @@ func _on_victory(title: String) -> void:
 	if Game.state != Game.State.PLAYING:
 		return
 	Game.state = Game.State.VICTORY
+	if current_mission_id in MISSION_ORDER:
+		Game.mark_mission_complete(current_mission_id)
 	# Let the moment breathe before the screen appears.
 	await get_tree().create_timer(2.0).timeout
 	Game.release_mouse()

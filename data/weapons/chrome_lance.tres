@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 display_name = "Chrome Lance"
-damage = 22.0
+damage = 42.0
 fire_rate = 0.45
 magazine_size = 3
 reload_time = 2.8

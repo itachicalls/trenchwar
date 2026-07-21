@@ -25,10 +25,11 @@ static func make_night_environment(fog_color: Color, ambient: Color, ambient_ene
 	env.glow_intensity = 0.7
 	env.glow_bloom = 0.15
 	env.glow_hdr_threshold = 0.9
-	# Subtle contact shadows on desktop (Forward+); ignored gracefully on web.
+	# Subtle contact shadows on desktop (Forward+) only — the web build runs
+	# Compatibility where SSAO costs frames for zero visual change.
 	# IMPORTANT: at toy scale (1 unit ≈ 3 cm) the default SSAO radius is as big
 	# as a whole soldier and blacks out every character. Keep it tiny and mild.
-	env.ssao_enabled = true
+	env.ssao_enabled = not OS.has_feature("web")
 	env.ssao_intensity = 0.7
 	env.ssao_radius = 0.4
 	env.ssao_light_affect = 0.0
@@ -263,6 +264,77 @@ func add_dust_motes(center: Vector3, extents: Vector3, amount: int = 40, color: 
 	motes.mesh = mm
 	motes.position = center
 	add_child(motes)
+
+## Floating supply crate that swaps the player's weapon on touch — the pickup
+## is a loaner, it doesn't change the saved Armory loadout. Respawns later.
+func spawn_weapon_drop(pos: Vector3, weapon_id: String, respawn_after: float = 30.0) -> void:
+	var info: Dictionary = Game.weapon_info(weapon_id)
+	var area := Area3D.new()
+	area.collision_layer = 0
+	area.collision_mask = 0b0010
+	var cs := CollisionShape3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = 1.6
+	cs.shape = sphere
+	area.add_child(cs)
+	add_child(area)
+	area.global_position = pos + Vector3.UP * 1.2
+
+	var vis := Node3D.new()
+	area.add_child(vis)
+	var crate := ModelLib.build_prop("crate", 1.8)
+	if crate != null:
+		crate.position.y = -0.9
+		vis.add_child(crate)
+	# Weapon-colored beacon ring + light so drops read across the room.
+	var wd: WeaponData = load(info.path)
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 1.0
+	tm.outer_radius = 1.2
+	ring.mesh = tm
+	ring.material_override = ToyMaterials.glow(wd.projectile_color, 2.4)
+	ring.position.y = -1.0
+	vis.add_child(ring)
+	var light := OmniLight3D.new()
+	light.light_color = wd.projectile_color
+	light.light_energy = 1.6
+	light.omni_range = 7.0
+	vis.add_child(light)
+
+	var taken := {"v": false}
+	area.body_entered.connect(func(body: Node3D):
+		if taken.v or body != Game.player:
+			return
+		taken.v = true
+		Game.player.equip_weapon_data(wd, info.gun)
+		Events.notify.emit("PICKED UP: %s" % wd.display_name.to_upper())
+		Sfx.play("pickup")
+		vis.visible = false
+		area.set_deferred("monitoring", false)
+		get_tree().create_timer(respawn_after).timeout.connect(func():
+			if is_instance_valid(area):
+				taken.v = false
+				vis.visible = true
+				area.set_deferred("monitoring", true)))
+
+	# Idle motion: slow spin + bob.
+	var tw := area.create_tween().set_loops()
+	tw.tween_property(vis, "position:y", 0.35, 1.2).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(vis, "position:y", -0.35, 1.2).set_trans(Tween.TRANS_SINE)
+	var spin := area.create_tween().set_loops()
+	spin.tween_property(vis, "rotation:y", TAU, 4.0).from(0.0)
+
+## Deterministic coin trails across the floor: exploration always pays.
+## Call from _spawn_pickups with the room's walkable half-extents.
+func scatter_coins(half_w: float, half_d: float, clusters: int = 6) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(get_script().resource_path) + 7
+	for c in clusters:
+		var center := Vector3(rng.randf_range(-half_w, half_w), 0, rng.randf_range(-half_d, half_d))
+		var dir := Vector3(rng.randf_range(-1, 1), 0, rng.randf_range(-1, 1)).normalized()
+		for i in rng.randi_range(3, 5):
+			Pickup.spawn_coin(self, center + dir * i * 1.6, 1)
 
 ## Four walls + floor for a room shell.
 func _build_shell(width: float, depth: float, wall_height: float, floor_mat: Material, wall_mat: Material) -> void:

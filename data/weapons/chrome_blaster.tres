@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 display_name = "Chrome Pulse Blaster"
-damage = 5.0
+damage = 11.0
 fire_rate = 3.2
 magazine_size = 30
 reload_time = 2.0

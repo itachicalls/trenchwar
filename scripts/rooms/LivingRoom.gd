@@ -296,12 +296,15 @@ func _spawn_units() -> void:
 	plane.rotation_degrees.y = -90.0
 
 func _spawn_pickups_and_toys() -> void:
+	scatter_coins(ROOM_W * 0.4, ROOM_D * 0.4)
 	for pos in [Vector3(-30, 0, 0), Vector3(12, 0, -25), Vector3(0, 16.2, 5), Vector3(38, 0, 30), Vector3(0, 14.6, -40)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(-15, 0, 20), Vector3(25, 0, -8), Vector3(52, 0, -30)]:
 		Pickup.spawn_parts(self, pos, 5)
 	for pos in [Vector3(-40, 0, -5), Vector3(18, 0, 20), Vector3(0, 16.2, -6)]:
 		Pickup.spawn_ammo(self, pos)
+	spawn_weapon_drop(Vector3(30, 0, 12), "scatter")
+	spawn_weapon_drop(Vector3(-24, 0, -18), "soaker")
 	var toy_spots := [
 		["Captain Cushion", Vector3(0, 14.6, -40)],       # on the couch seat
 		["Remote-Keeper", Vector3(52, 0.5, 44)],          # behind the cabinet

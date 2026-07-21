@@ -21,14 +21,11 @@ static func explosion(node: Node, position: Vector3, radius: float = 2.5) -> voi
 static func plastic_shatter(node: Node, position: Vector3, color: Color) -> void:
 	_burst(_root(node), position, color, 22, 0.8, 5.0, 0.12, true)
 
+## PERF: no per-shot OmniLight — allocating a light for every bullet was the
+## single biggest frame spike with automatic weapons (each light re-renders
+## nearby geometry, and web/Compatibility pays full price per light). The
+## emissive star reads just as well at toy scale.
 static func muzzle_flash(parent: Node3D, color: Color) -> void:
-	var light := OmniLight3D.new()
-	light.light_color = color
-	light.light_energy = 2.2
-	light.omni_range = 3.0
-	parent.add_child(light)
-	parent.get_tree().create_timer(0.05).timeout.connect(light.queue_free)
-	# Visible flash star: a small emissive sphere that pops and shrinks.
 	var flash := MeshInstance3D.new()
 	var s := SphereMesh.new()
 	s.radius = 0.16
@@ -74,7 +71,12 @@ static func dust(node: Node, position: Vector3, big: bool = false) -> void:
 	_burst(_root(node), position, Color(0.55, 0.5, 0.45, 0.8), 10 if big else 5, 0.5, 2.2 if big else 1.2, 0.09 if big else 0.055)
 
 ## Floating damage number that drifts up and fades. Red-orange on kill shots.
+## Capped: with fast weapons, dozens of live Label3Ds tanked the frame rate.
+static var _live_numbers := 0
 static func damage_number(node: Node, position: Vector3, amount: float, killed: bool) -> void:
+	if _live_numbers >= 12 and not killed:
+		return
+	_live_numbers += 1
 	var root := _root(node)
 	var label := Label3D.new()
 	label.text = str(int(round(amount)))
@@ -93,7 +95,9 @@ static func damage_number(node: Node, position: Vector3, amount: float, killed: 
 	var tw := label.create_tween().set_parallel(true)
 	tw.tween_property(label, "global_position:y", label.global_position.y + 1.4, 0.7).set_ease(Tween.EASE_OUT)
 	tw.tween_property(label, "modulate:a", 0.0, 0.7).set_ease(Tween.EASE_IN)
-	tw.chain().tween_callback(label.queue_free)
+	tw.chain().tween_callback(func():
+		_live_numbers = maxi(_live_numbers - 1, 0)
+		label.queue_free())
 
 static func _flash(root: Node, position: Vector3, color: Color, range_: float) -> void:
 	var light := OmniLight3D.new()
@@ -106,7 +110,12 @@ static func _flash(root: Node, position: Vector3, color: Color, range_: float) -
 	tween.tween_property(light, "light_energy", 0.0, 0.25)
 	tween.tween_callback(light.queue_free)
 
+## Capped: heavy firefights spawned unbounded particle nodes.
+static var _live_bursts := 0
 static func _burst(root: Node, position: Vector3, color: Color, count: int, life: float, speed: float, size: float, gravity_shards: bool = false) -> void:
+	if _live_bursts >= 30:
+		return
+	_live_bursts += 1
 	var p := CPUParticles3D.new()
 	p.one_shot = true
 	p.emitting = true
@@ -126,4 +135,6 @@ static func _burst(root: Node, position: Vector3, color: Color, count: int, life
 	p.mesh = box
 	root.add_child(p)
 	p.global_position = position
-	root.get_tree().create_timer(life + 0.3).timeout.connect(p.queue_free)
+	root.get_tree().create_timer(life + 0.3).timeout.connect(func():
+		_live_bursts = maxi(_live_bursts - 1, 0)
+		p.queue_free())

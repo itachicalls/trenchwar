@@ -10,7 +10,7 @@ const PLAYER_RESPAWN := 4.0
 
 const GREEN := "res://data/factions/green_army.tres"
 const CHROME := "res://data/factions/chrome_legion.tres"
-const MIX := ["trooper", "scout", "trooper", "heavy", "scout", "sniper", "trooper"]
+const MIX := ["trooper", "scout", "commando", "heavy", "grenadier", "sniper", "trooper"]
 
 var green_score := 0
 var chrome_score := 0

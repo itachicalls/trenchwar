@@ -109,9 +109,18 @@ func release_mouse() -> void:
 func is_playing() -> bool:
 	return state == State.PLAYING and not get_tree().paused
 
+## Campaign chapters beaten this profile — drives mission-select unlocks.
+var completed_missions: Array = []
+
+func mark_mission_complete(id: String) -> void:
+	if id != "" and not (id in completed_missions):
+		completed_missions.append(id)
+	save_progress()
+
 func save_progress() -> void:
 	var cf := ConfigFile.new()
 	cf.set_value("save", "coins", coins)
+	cf.set_value("save", "completed_missions", completed_missions)
 	cf.set_value("save", "upgrades", upgrades)
 	cf.set_value("save", "selected_skin", selected_skin)
 	cf.set_value("save", "unlocked_skins", unlocked_skins)
@@ -124,6 +133,7 @@ func _load_progress() -> void:
 	if cf.load(SAVE_PATH) != OK:
 		return
 	coins = cf.get_value("save", "coins", 0)
+	completed_missions = cf.get_value("save", "completed_missions", [])
 	var saved: Dictionary = cf.get_value("save", "upgrades", {})
 	for k in upgrades.keys():
 		upgrades[k] = int(saved.get(k, 0))
@@ -148,6 +158,7 @@ func _register_inputs() -> void:
 	_key("cmd_follow", KEY_1)
 	_key("cmd_hold", KEY_2)
 	_key("cmd_charge", KEY_3)
+	_key("swap_weapon", KEY_Q)
 	_key("pause", KEY_ESCAPE)
 	# P as backup pause: browsers swallow ESC for pointer-lock exit.
 	var p_ev := InputEventKey.new()

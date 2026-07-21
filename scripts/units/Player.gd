@@ -28,6 +28,11 @@ var _shield_bubble: MeshInstance3D
 var aim_at_enemy := false
 var _aim_point := Vector3.ZERO
 
+## Two weapon slots: [0] = Armory loadout, [1] = field pickup.
+## Q toggles, so a drop never traps you with a gun you hate.
+var _slots: Array[Dictionary] = []
+var _slot := 0
+
 func _init() -> void:
 	# Equipped Armory loadout, applied before Unit._ready builds the weapon.
 	weapon_data = load(Game.weapon_info(Game.selected_weapon).path)
@@ -41,6 +46,11 @@ func _unit_ready() -> void:
 	# camera yaw since the node itself must stay unrotated for mouse-look.
 	_yaw = rotation.y
 	rotation.y = 0.0
+	# Face the camera direction from frame one. Without this the body stays
+	# on the mold's default -Z until the first move/shot, so the first shot
+	# of a mission visibly fired sideways.
+	if body_rig != null:
+		body_rig.rotation.y = _yaw
 	# Store upgrades bought with coins apply here, on every spawn.
 	base_health = 200.0 + 50.0 * Game.upgrades.get("health", 0)
 	weapon.damage_mult = 1.0 + 0.2 * Game.upgrades.get("damage", 0)
@@ -64,9 +74,50 @@ func _unit_ready() -> void:
 	_spring.add_child(_camera)
 	_camera.make_current()
 
+	_slots = [{"data": weapon.data, "gun": Game.weapon_info(Game.selected_weapon).gun, "ammo": -1}]
+
 	Events.player_spawned.emit(self)
 	Events.player_health_changed.emit(health.current, health.max_health)
 	Events.ammo_changed.emit(weapon.ammo, weapon.data.magazine_size)
+	Events.weapon_changed.emit(weapon.data.display_name)
+
+# ------------------------------------------------------------- WEAPON SLOTS
+
+## Field pickup: goes into slot 1 and is equipped immediately.
+func equip_weapon_data(wd: WeaponData, gun: String) -> void:
+	_slots[_slot].ammo = weapon.ammo
+	var entry := {"data": wd, "gun": gun, "ammo": -1}
+	if _slots.size() < 2:
+		_slots.append(entry)
+	else:
+		_slots[1] = entry
+	_slot = 1
+	_apply_slot()
+
+## Armory purchase/equip mid-mission: replaces the loadout slot.
+func set_loadout(wd: WeaponData, gun: String) -> void:
+	_slots[0] = {"data": wd, "gun": gun, "ammo": -1}
+	if _slot == 0:
+		_apply_slot()
+
+func toggle_weapon() -> void:
+	if _slots.size() < 2:
+		return
+	_slots[_slot].ammo = weapon.ammo
+	_slot = 1 - _slot
+	_apply_slot()
+	Sfx.play("reload", -10.0)
+	Events.notify.emit("SWAPPED TO: %s   [Q]" % weapon.data.display_name.to_upper())
+
+func _apply_slot() -> void:
+	var s: Dictionary = _slots[_slot]
+	weapon.set_data(s.data)
+	# Slots remember their partial magazines between swaps.
+	if s.ammo >= 0:
+		weapon.ammo = s.ammo
+		weapon.ammo_updated.emit(weapon.ammo, weapon.data.magazine_size)
+	if body_rig != null:
+		ModelLib.set_gun(body_rig, s.gun)
 	Events.weapon_changed.emit(weapon.data.display_name)
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -118,35 +169,65 @@ func _update_aim_probe() -> void:
 	else:
 		_aim_point = hit.position
 		var c: Object = hit.collider
-		aim_at_enemy = c is Node and (c as Node).is_in_group("enemies") \
-			or (c is Node and (c as Node).is_in_group("chrome_pods"))
+		aim_at_enemy = _is_hostile(c)
 	if not aim_at_enemy:
 		_apply_aim_assist(from, dir)
 
-## Subtle bullet magnetism: if an enemy is within a ~3.5° cone of the
-## crosshair (and visible), shots bend toward their chest. The camera never
-## moves — only the fired projectile direction is helped.
+func _is_hostile(c: Object) -> bool:
+	if not (c is Node):
+		return false
+	var n := c as Node
+	if n.is_in_group("enemies") or n.is_in_group("chrome_pods"):
+		return true
+	# Arena bots: anything on a faction hostile to ours.
+	return n.is_in_group("combat_bots") and "faction" in n and n.faction != null \
+		and faction.hostile_to(n.faction)
+
+## Soft aim lock: if a hostile is within a ~7° cone of the crosshair (and
+## visible), shots bend hard toward their chest. The camera never moves —
+## only the fired projectile direction is helped — and it prefers to stay on
+## the current target so the lock doesn't ping-pong between clustered enemies.
+var _assist_target: Node3D = null
 func _apply_aim_assist(from: Vector3, dir: Vector3) -> void:
 	var best: Node3D = null
-	var best_angle := deg_to_rad(3.5)
-	for e in get_tree().get_nodes_in_group("enemies"):
-		if e is Node3D and is_instance_valid(e) and not (e.has_method("is_dead") and e.is_dead()):
+	var best_angle := deg_to_rad(7.0)
+	var candidates: Array[Node] = []
+	candidates.append_array(get_tree().get_nodes_in_group("enemies"))
+	candidates.append_array(get_tree().get_nodes_in_group("combat_bots"))
+	for e in candidates:
+		if e is Node3D and is_instance_valid(e) and _is_hostile(e) \
+				and not (e.has_method("is_dead") and e.is_dead()):
 			var chest: Vector3 = (e as Node3D).global_position + Vector3.UP * 0.8
 			var to := chest - from
 			var d := to.length()
-			if d < 2.0 or d > 50.0:
+			if d < 2.0 or d > 65.0:
 				continue
 			var angle := dir.angle_to(to / d)
+			# Stickiness: the current target wins ties inside a wider cone,
+			# so tracking one enemy through a crowd feels locked-on.
+			if e == _assist_target:
+				angle *= 0.55
 			if angle < best_angle:
 				best_angle = angle
 				best = e
 	if best == null:
+		_assist_target = null
 		return
 	var chest: Vector3 = best.global_position + Vector3.UP * 0.8
 	var los := PhysicsRayQueryParameters3D.create(from, chest)
 	los.collision_mask = 0b0001   # only world geometry blocks the assist
 	if get_world_3d().direct_space_state.intersect_ray(los).is_empty():
-		_aim_point = _aim_point.lerp(chest, 0.6)
+		_assist_target = best
+		# Pull strength grows as the crosshair gets closer to the target:
+		# near-misses become hits, wild shots still miss.
+		var strength: float = lerpf(0.9, 0.45, clampf(best_angle / deg_to_rad(7.0), 0.0, 1.0))
+		# Lead moving targets so the assist works on strafing bots too.
+		if best is CharacterBody3D:
+			var travel: float = chest.distance_to(from) / maxf(weapon.data.projectile_speed, 1.0)
+			chest += (best as CharacterBody3D).velocity * travel * 0.6
+		_aim_point = _aim_point.lerp(chest, strength)
+	else:
+		_assist_target = null
 
 func _update_camera(delta: float) -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
@@ -235,6 +316,8 @@ func _aim_direction() -> Vector3:
 	return dir.normalized()
 
 func _update_interactions() -> void:
+	if Input.is_action_just_pressed("swap_weapon"):
+		toggle_weapon()
 	if Input.is_action_just_pressed("cmd_follow"):
 		_command_squad("follow")
 	elif Input.is_action_just_pressed("cmd_hold"):

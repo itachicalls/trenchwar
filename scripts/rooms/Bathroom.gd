@@ -308,12 +308,15 @@ func _spawn_units() -> void:
 	tank.rotation_degrees.y = 30.0
 
 func _spawn_pickups_and_toys() -> void:
+	scatter_coins(ROOM_W * 0.4, ROOM_D * 0.4)
 	for pos in [Vector3(-20, 0, 12), Vector3(22, 0, -12), Vector3(-34, 3.4, 18), Vector3(34, 16.4, -28), Vector3(6, 0, 40)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(-6, 0, -14), Vector3(36, 0, 4), Vector3(-46, 0, 30)]:
 		Pickup.spawn_parts(self, pos, 5)
 	for pos in [Vector3(12, 0, -24), Vector3(-28, 0, 6), Vector3(-38, 3.4, 18)]:
 		Pickup.spawn_ammo(self, pos)
+	spawn_weapon_drop(Vector3(18, 0, 26), "scatter")
+	spawn_weapon_drop(Vector3(-14, 0, -30), "sniper")
 	var toy_spots := [
 		["Quackers", Vector3(-42, 16.4, 8.5)],            # beside the duck
 		["Scrubs", Vector3(-33, 26.4, -ROOM_D / 2 + 12)], # on the sink counter

@@ -236,7 +236,7 @@ func _spawn_units() -> void:
 		mate.position = pos
 
 	# Trench garrisons: each line gets a patrol; deeper lines hit harder.
-	var mixes := [["trooper", "scout", "trooper"], ["trooper", "heavy", "scout"], ["heavy", "sniper", "trooper"]]
+	var mixes := [["trooper", "scout", "trooper"], ["commando", "heavy", "scout"], ["grenadier", "sniper", "juggernaut"]]
 	for li in LINES.size():
 		var z: float = LINES[li]
 		var route: Array[Vector3] = [Vector3(-30, 1, z - 3), Vector3(10, 1, z + 3), Vector3(38, 1, z - 2)]
@@ -263,6 +263,7 @@ func _spawn_enemy(variant_name: String, route: Array[Vector3], pos: Vector3, ale
 			enemy.target = Game.player
 
 func _spawn_pickups_and_toys() -> void:
+	scatter_coins(ROOM_W * 0.4, ROOM_D * 0.4)
 	for pos in [Vector3(-40, 0, 34), Vector3(30, 0, 6), Vector3(-20, 0, -20), Vector3(50, 0, -30)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(20, 0, 34), Vector3(-16, 0, 4), Vector3(6, 0, -34)]:
@@ -271,6 +272,9 @@ func _spawn_pickups_and_toys() -> void:
 		Pickup.spawn_coin(self, pos, 5)
 	Pickup.spawn_powerup(self, Vector3(0, 0, 14), Pickup.Kind.RAPID)
 	Pickup.spawn_powerup(self, Vector3(-44, 0, -26), Pickup.Kind.SHIELD)
+	spawn_weapon_drop(Vector3(24, 0, 20), "sniper")
+	spawn_weapon_drop(Vector3(-36, 0, 8), "marble")
+	spawn_weapon_drop(Vector3(10, 0, -26), "scatter")
 	var toy_spots := [
 		["Corporal Sprout", Vector3(-60, 0.6, 44)],
 		["Muddy", Vector3(58, 0.6, -46)],
@@ -319,7 +323,7 @@ func _begin_counterattack() -> void:
 			_wave += 1
 			Events.notify.emit("COUNTERATTACK WAVE %d!" % _wave)
 			Sfx.play("shoot_heavy", -4.0, 0.35)
-			var mix := ["trooper", "scout", "trooper", "heavy"]
+			var mix := ["trooper", "commando", "grenadier", "heavy"]
 			for i in 4:
 				var x := -30.0 + i * 20.0
 				_spawn_enemy(mix[i], [Vector3(x, 1, 20)], Vector3(x, 1, -ROOM_D / 2 + 8), true))

@@ -363,12 +363,15 @@ func _spawn_units() -> void:
 	tank.rotation_degrees.y = 40.0
 
 func _spawn_pickups_and_toys() -> void:
+	scatter_coins(ROOM_W * 0.4, ROOM_D * 0.4)
 	for pos in [Vector3(-20, 0, 10), Vector3(10, 0, -20), Vector3(30, 0, 20), Vector3(-38, 10, -22)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(-10, 0, 0), Vector3(25, 0, -5), Vector3(45, 0, 10)]:
 		Pickup.spawn_parts(self, pos, 5)
 	for pos in [Vector3(0, 0, 18), Vector3(20, 0, -28)]:
 		Pickup.spawn_ammo(self, pos)
+	spawn_weapon_drop(Vector3(34, 0, -14), "repeater")
+	spawn_weapon_drop(Vector3(-28, 0, 24), "scatter")
 	# Lost toys hide in hard-to-reach spots: under the bed, on the desk,
 	# on a bookshelf, in the LEGO city, behind the ball.
 	var toy_spots := [

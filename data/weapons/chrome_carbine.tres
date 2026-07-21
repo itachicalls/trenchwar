@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/WeaponData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Chrome Carbine"
+damage = 9.0
+fire_rate = 8.0
+magazine_size = 32
+reload_time = 1.6
+projectile_speed = 62.0
+spread_degrees = 2.2
+automatic = true
+pellets = 1
+projectile_color = Color(0.65, 0.85, 1.0, 1.0)
+sound = "shoot"
+recoil = 0.6
