@@ -96,9 +96,8 @@ func _unit_ready() -> void:
 func _build_jetpack() -> void:
 	if body_rig == null:
 		return
-	var pack := ModelLib.build_jetpack()
-	pack.position = Vector3(0, 0.95, 0.3)   # model faces -Z, so +Z = the back
-	body_rig.add_child(pack)
+	# Bone-attached: rides the torso through every animation.
+	var pack := ModelLib.attach_jetpack(body_rig)
 	for nozzle in pack.get_meta("nozzles", []):
 		var flame := CPUParticles3D.new()
 		flame.emitting = false

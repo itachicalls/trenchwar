@@ -101,78 +101,120 @@ static func build_landmark(land_name: String, target_size: float) -> Node3D:
 		aabb.size * s))
 	return rig
 
-## Toy jetpack worn on the player's back: die-cast twin tanks with red caps,
-## dark thruster bells, straps and a little fuel dial. Meta "nozzles" holds
-## the two Node3D exhaust points for flame particles.
+## Military toy jetpack: olive twin tanks with amber trim rings, chrome
+## thruster bells with a hot inner glow, a slim armored spine plate and a
+## tail fin. Meta "nozzles" holds the two exhaust Node3Ds for flame FX.
 static func build_jetpack() -> Node3D:
 	var rig := Node3D.new()
 	rig.name = "Jetpack"
-	var steel := ToyMaterials.metal(Color(0.72, 0.74, 0.78), 0.3)
-	var dark := ToyMaterials.metal(Color(0.25, 0.26, 0.3), 0.45)
-	var red := ToyMaterials.plastic(Color(0.85, 0.2, 0.16), 0.25)
+	var olive := ToyMaterials.plastic(Color(0.32, 0.4, 0.22), 0.35)
+	var olive_dark := ToyMaterials.plastic(Color(0.2, 0.25, 0.15), 0.5)
+	var chrome := ToyMaterials.metal(Color(0.75, 0.78, 0.82), 0.22)
+	var amber := ToyMaterials.plastic(Color(0.9, 0.62, 0.15), 0.3)
 
+	# Armored spine plate hugging the back.
 	var plate := MeshInstance3D.new()
 	var pm := BoxMesh.new()
-	pm.size = Vector3(0.52, 0.62, 0.1)
+	pm.size = Vector3(0.4, 0.52, 0.08)
 	plate.mesh = pm
-	plate.material_override = dark
+	plate.material_override = olive_dark
 	rig.add_child(plate)
 
 	var nozzles: Array = []
 	for side in [-1.0, 1.0]:
+		# Main tank: olive body...
 		var tank := MeshInstance3D.new()
 		var tm := CapsuleMesh.new()
-		tm.radius = 0.13
-		tm.height = 0.62
+		tm.radius = 0.105
+		tm.height = 0.56
 		tank.mesh = tm
-		tank.material_override = steel
-		tank.position = Vector3(side * 0.15, 0.02, 0.14)
+		tank.material_override = olive
+		tank.position = Vector3(side * 0.13, 0.0, 0.1)
+		tank.rotation_degrees.z = side * -4.0   # slight outward cant
 		rig.add_child(tank)
+		# ...amber trim ring near the top...
+		var ring := MeshInstance3D.new()
+		var rm := CylinderMesh.new()
+		rm.top_radius = 0.108
+		rm.bottom_radius = 0.108
+		rm.height = 0.05
+		ring.mesh = rm
+		ring.material_override = amber
+		ring.position = tank.position + Vector3(side * -0.012, 0.16, 0)
+		ring.rotation_degrees.z = side * -4.0
+		rig.add_child(ring)
+		# ...chrome dome cap...
 		var cap := MeshInstance3D.new()
 		var cm := SphereMesh.new()
-		cm.radius = 0.135
-		cm.height = 0.2
+		cm.radius = 0.1
+		cm.height = 0.15
 		cap.mesh = cm
-		cap.material_override = red
-		cap.position = tank.position + Vector3(0, 0.3, 0)
+		cap.material_override = chrome
+		cap.position = tank.position + Vector3(side * -0.02, 0.28, 0)
 		rig.add_child(cap)
+		# ...chrome thruster bell with a hot orange throat...
 		var bell := MeshInstance3D.new()
 		var bm := CylinderMesh.new()
-		bm.top_radius = 0.07
-		bm.bottom_radius = 0.11
-		bm.height = 0.14
+		bm.top_radius = 0.055
+		bm.bottom_radius = 0.095
+		bm.height = 0.13
 		bell.mesh = bm
-		bell.material_override = dark
-		bell.position = tank.position + Vector3(0, -0.38, 0)
+		bell.material_override = chrome
+		bell.position = tank.position + Vector3(side * 0.015, -0.33, 0)
 		rig.add_child(bell)
+		var throat := MeshInstance3D.new()
+		var thm := CylinderMesh.new()
+		thm.top_radius = 0.04
+		thm.bottom_radius = 0.075
+		thm.height = 0.05
+		throat.mesh = thm
+		throat.material_override = ToyMaterials.glow(Color(1.0, 0.5, 0.15), 1.4)
+		throat.position = bell.position + Vector3(0, -0.05, 0)
+		rig.add_child(throat)
 		var nozzle := Node3D.new()
-		nozzle.position = bell.position + Vector3(0, -0.08, 0)
+		nozzle.position = bell.position + Vector3(0, -0.1, 0)
 		rig.add_child(nozzle)
 		nozzles.append(nozzle)
 
-	# Fuel dial between the tanks: tiny glowing gauge face.
-	var dial := MeshInstance3D.new()
-	var dm := CylinderMesh.new()
-	dm.top_radius = 0.06
-	dm.bottom_radius = 0.06
-	dm.height = 0.03
-	dial.mesh = dm
-	dial.material_override = ToyMaterials.glow(Color(1.0, 0.7, 0.2), 1.6)
-	dial.rotation_degrees.x = 90.0
-	dial.position = Vector3(0, 0.05, 0.2)
-	rig.add_child(dial)
-	# Shoulder straps.
-	for side in [-1.0, 1.0]:
-		var strap := MeshInstance3D.new()
-		var sm := BoxMesh.new()
-		sm.size = Vector3(0.07, 0.5, 0.04)
-		strap.mesh = sm
-		strap.material_override = ToyMaterials.plastic(Color(0.3, 0.32, 0.2), 0.7)
-		strap.position = Vector3(side * 0.15, 0.14, -0.06)
-		strap.rotation_degrees.x = -18.0
-		rig.add_child(strap)
+	# Center tail fin between the tanks: makes the silhouette read "rocket".
+	var fin := MeshInstance3D.new()
+	var fm := PrismMesh.new()
+	fm.size = Vector3(0.05, 0.3, 0.16)
+	fin.mesh = fm
+	fin.material_override = amber
+	fin.position = Vector3(0, 0.1, 0.2)
+	fin.rotation_degrees = Vector3(-90, 0, 0)
+	rig.add_child(fin)
+	# Fuel window: small emissive slot on the spine plate, low center.
+	var window := MeshInstance3D.new()
+	var wm := BoxMesh.new()
+	wm.size = Vector3(0.1, 0.16, 0.02)
+	window.mesh = wm
+	window.material_override = ToyMaterials.glow(Color(1.0, 0.72, 0.2), 1.8)
+	window.position = Vector3(0, -0.14, 0.14)
+	rig.add_child(window)
 	rig.set_meta("nozzles", nozzles)
 	return rig
+
+## Straps the jetpack onto a built character rig's Torso BONE so it rides
+## every animation (aim lean, run bob, jump tuck) glued to the back instead
+## of floating at a fixed offset. Returns the pack (meta "nozzles" inside).
+static func attach_jetpack(rig: Node3D) -> Node3D:
+	var pack := build_jetpack()
+	var skel: Skeleton3D = rig.find_child("Skeleton3D", true, false)
+	if skel != null and skel.find_bone("Torso") >= 0:
+		var att := BoneAttachment3D.new()
+		skel.add_child(att)
+		att.bone_name = "Torso"
+		att.add_child(pack)
+		# Bone space: tuned against the aim/run poses in the jetpack lab.
+		pack.position = Vector3(0, 0.08, -0.2)
+		pack.rotation_degrees = Vector3(-6, 180, 0)
+	else:
+		# Fallback primitive rigs have no skeleton; pin behind the torso.
+		pack.position = Vector3(0, 0.95, 0.3)
+		rig.add_child(pack)
+	return pack
 
 ## Standalone gun prop (weapon pickups, menu dressing).
 static func build_gun(gun_name: String) -> Node3D:

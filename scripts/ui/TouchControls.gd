@@ -44,28 +44,34 @@ func _layout() -> void:
 	# Everything sized off the SHORT edge: consistent thumb size in both
 	# orientations and on tablets.
 	var u := minf(vp.x, vp.y) / 100.0   # 1u = 1% of short edge
-	_stick_radius = 16.0 * u
-	_stick_home = Vector2(20.0 * u, vp.y - 22.0 * u)
+	_stick_radius = 15.0 * u
+	_stick_home = Vector2(19.0 * u, vp.y - 21.0 * u)
+	# Right-hand cluster fans in an arc around FIRE. Every pair of circles is
+	# spaced so their TAP zones (radius * 1.15) never intersect — the old
+	# layout let fire/jump/aim/swap hit areas overlap each other (and the
+	# squad row sat on the joystick in portrait): a jumbled mess.
 	_buttons = [
-		{"id": "fire", "pos": Vector2(vp.x - 14.0 * u, vp.y - 20.0 * u), "radius": 10.5 * u,
+		{"id": "fire", "pos": Vector2(vp.x - 12.0 * u, vp.y - 14.0 * u), "radius": 9.0 * u,
 			"action": "fire", "label": "FIRE", "toggle": false, "held": false},
-		{"id": "jump", "pos": Vector2(vp.x - 34.0 * u, vp.y - 12.0 * u), "radius": 7.5 * u,
+		{"id": "jump", "pos": Vector2(vp.x - 31.0 * u, vp.y - 9.0 * u), "radius": 7.0 * u,
 			"action": "jump", "label": "JUMP", "toggle": false, "held": false},
-		{"id": "aim", "pos": Vector2(vp.x - 12.0 * u, vp.y - 38.0 * u), "radius": 6.5 * u,
+		{"id": "aim", "pos": Vector2(vp.x - 9.0 * u, vp.y - 33.0 * u), "radius": 6.0 * u,
 			"action": "aim", "label": "AIM", "toggle": true, "held": false},
-		{"id": "reload", "pos": Vector2(vp.x - 30.0 * u, vp.y - 30.0 * u), "radius": 6.0 * u,
+		{"id": "reload", "pos": Vector2(vp.x - 26.0 * u, vp.y - 26.0 * u), "radius": 5.5 * u,
 			"action": "reload", "label": "R", "toggle": false, "held": false},
-		{"id": "swap", "pos": Vector2(vp.x - 45.0 * u, vp.y - 22.0 * u), "radius": 6.0 * u,
+		{"id": "swap", "pos": Vector2(vp.x - 43.0 * u, vp.y - 19.0 * u), "radius": 5.5 * u,
 			"action": "swap_weapon", "label": "SWAP", "toggle": false, "held": false},
-		{"id": "interact", "pos": Vector2(vp.x - 10.0 * u, vp.y * 0.48), "radius": 7.0 * u,
+		{"id": "interact", "pos": Vector2(vp.x - 9.0 * u, vp.y - 52.0 * u), "radius": 6.5 * u,
 			"action": "interact", "label": "E", "toggle": false, "held": false},
-		{"id": "cmd1", "pos": Vector2(vp.x * 0.40, vp.y - 7.0 * u), "radius": 5.0 * u,
+		# Squad orders: vertical stack on the LEFT edge, above the joystick —
+		# clear of both thumbs and identical in portrait and landscape.
+		{"id": "cmd1", "pos": Vector2(8.0 * u, vp.y - 44.0 * u), "radius": 4.5 * u,
 			"action": "cmd_follow", "label": "1", "toggle": false, "held": false},
-		{"id": "cmd2", "pos": Vector2(vp.x * 0.48, vp.y - 7.0 * u), "radius": 5.0 * u,
+		{"id": "cmd2", "pos": Vector2(8.0 * u, vp.y - 56.0 * u), "radius": 4.5 * u,
 			"action": "cmd_hold", "label": "2", "toggle": false, "held": false},
-		{"id": "cmd3", "pos": Vector2(vp.x * 0.56, vp.y - 7.0 * u), "radius": 5.0 * u,
+		{"id": "cmd3", "pos": Vector2(8.0 * u, vp.y - 68.0 * u), "radius": 4.5 * u,
 			"action": "cmd_charge", "label": "3", "toggle": false, "held": false},
-		{"id": "pause", "pos": Vector2(vp.x * 0.5, 7.0 * u), "radius": 5.0 * u,
+		{"id": "pause", "pos": Vector2(vp.x - 8.0 * u, 8.0 * u), "radius": 5.0 * u,
 			"action": "pause", "label": "II", "toggle": false, "held": false},
 	]
 	_canvas.queue_redraw()
@@ -115,9 +121,10 @@ func _input(event: InputEvent) -> void:
 		_touch_drag(event.index, event.position, event.relative)
 
 func _touch_down(finger: int, pos: Vector2) -> void:
-	# Buttons win over everything.
+	# Buttons win over everything. 1.15 = the spacing contract in _layout:
+	# bigger grab zones re-introduce the overlaps this layout was built to kill.
 	for b in _buttons:
-		if pos.distance_to(b.pos) <= b.radius * 1.3:
+		if pos.distance_to(b.pos) <= b.radius * 1.15:
 			b.held = true
 			b["finger"] = finger
 			if b.toggle:
