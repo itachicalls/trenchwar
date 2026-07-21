@@ -17,6 +17,7 @@ var _hold_position: Vector3
 var _follow_offset: Vector3
 var _prompt: Label3D
 var _stuck_time := 0.0
+var _last_pos := Vector3.ZERO
 
 func _unit_ready() -> void:
 	add_to_group("green_allies")
@@ -162,9 +163,15 @@ func _do_follow(delta: float, speed: float) -> void:
 
 	if dist_to_anchor > 2.0:
 		_move_toward_point(anchor, delta, speed * 1.15)
-		# Unstick: making no progress (or hopelessly far) → regroup teleport.
-		var flat_speed := Vector2(velocity.x, velocity.z).length()
-		_stuck_time = _stuck_time + delta if flat_speed < 0.6 else 0.0
+		# Unstick ladder: vault low clutter first, teleport only as last resort.
+		# Stuck = wanting to move but not actually covering ground (velocity
+		# alone lies when sliding along a wall).
+		var progress := global_position.distance_to(_last_pos)
+		_last_pos = global_position
+		_stuck_time = _stuck_time + delta if progress < 0.03 else 0.0
+		if _stuck_time > 0.5 and _stuck_time < 2.5 and try_vault():
+			_stuck_time = 0.0
+			return
 		if _stuck_time > 2.5 or to_player.length() > 30.0:
 			_stuck_time = 0.0
 			# Snap onto the navmesh near the player — never inside furniture.

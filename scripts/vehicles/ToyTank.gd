@@ -132,6 +132,11 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if not Game.is_playing():
 		return
+	# Touch look-drag steers the turret while driving.
+	if driver != null and Game.touch_look != Vector2.ZERO:
+		_yaw -= Game.touch_look.x * 0.7
+		_pitch = clampf(_pitch - Game.touch_look.y * 0.7, -0.9, 0.15)
+		Game.touch_look = Vector2.ZERO
 	if driver == null:
 		_check_mount()
 		if not is_on_floor():

@@ -95,8 +95,18 @@ func add_squad_member(unit: Node) -> void:
 		Events.squad_changed.emit(squad)
 
 func capture_mouse() -> void:
+	# Touch devices have no pointer to capture — locking it breaks tap input.
+	if is_touch():
+		return
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+## ---- touch / mobile ------------------------------------------------------
+## Look input accumulated by TouchControls each frame; Player consumes it.
+var touch_look := Vector2.ZERO
+
+func is_touch() -> bool:
+	return DisplayServer.is_touchscreen_available()
 
 func capture_mouse_on_web() -> void:
 	# Browsers only allow pointer lock after a user click — skip auto-capture on web.

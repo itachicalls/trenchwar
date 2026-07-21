@@ -252,7 +252,9 @@ func _build_scattered_props() -> void:
 	add_prop("crate", Vector3(-34, 0, 14), 15, 3.2)
 	add_prop("crate", Vector3(-31, 0, 17.4), 40, 2.6)
 	add_prop("cardboard_1", Vector3(30, 0, 26), -20, 5.0)
-	add_prop("cardboard_2", Vector3(-44, 0, 24), 65, 4.2)
+	# Against the west wall — parked in the spawn sightline it read as a
+	# featureless monolith blocking the whole opening view of the room.
+	add_prop("cardboard_2", Vector3(-56, 0, 6), 25, 4.2)
 	add_prop("barrier_single", Vector3(12, 0, -22), 30, 3.6)
 	add_prop("barrier_large", Vector3(26, 0, -20), -75, 5.2)
 	add_prop("pallet", Vector3(-10, 0, 34), 10, 3.4)

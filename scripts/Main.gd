@@ -39,6 +39,11 @@ const MISSIONS := {
 		preload("res://scripts/rooms/GardenBed.gd"),
 		"The garden bed. The Legion dug three trench lines through the tomato\nrows and their artillery pounds our positions from behind the bunkers.\n\nThis is the war the toybox will sing about.\n\nCapture the flags line by line. Silence the guns. Hold against the\ncounterattack. NO RETREAT.",
 	],
+	"laundry": [
+		"ACT 3-2:  SPIN CYCLE  —  The Laundry Room",
+		preload("res://scripts/rooms/LaundryRoom.gd"),
+		"The final chapter. The Legion wired the washing machine into a doomsday\nagitator and the whole room shakes on its spin cycle.\n\nRescue the laundry crew. Destroy the detergent pumps. Then hold on —\nwhen the machine spins up, EVERYTHING moves.",
+	],
 	"skirmish": [
 		"SKIRMISH  —  Team Deathmatch (vs bots)",
 		preload("res://scripts/rooms/SkirmishMode.gd"),
@@ -50,7 +55,7 @@ const MISSIONS := {
 		"Four toy squads drop into the Sandbox. The cleanup zone closes in —\nanyone caught outside gets swept.\n\nRESURGENCE RULES: while one squadmate stands, the fallen redeploy.\nIn the final circles, respawns go dark. Last squad standing wins.",
 	],
 }
-const MISSION_ORDER := ["bedroom", "living_room", "kitchen", "bathroom", "garage", "backyard", "trenches"]
+const MISSION_ORDER := ["bedroom", "living_room", "kitchen", "bathroom", "garage", "backyard", "trenches", "laundry"]
 
 const TIPS := [
 	"TIP: Rubber bands hurt. Aim-down-sights [RMB] tightens your spread.",
@@ -96,6 +101,9 @@ func _ready() -> void:
 		get_viewport().msaa_3d = Viewport.MSAA_2X
 		get_viewport().positional_shadow_atlas_size = 2048
 		RenderingServer.directional_shadow_atlas_set_size(2048, true)
+	# Phones/tablets get on-screen controls; it hides itself outside gameplay.
+	if Game.is_touch():
+		add_child(preload("res://scripts/ui/TouchControls.gd").new())
 	# Screen fader on its own top layer, always available.
 	var fade_layer := CanvasLayer.new()
 	fade_layer.layer = 99
@@ -260,7 +268,8 @@ func _subtitle(box: VBoxContainer, text: String, size: int, color: Color) -> Lab
 func _button(box: VBoxContainer, text: String, action: Callable, accent: Color = Color.TRANSPARENT) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(430, 52)
+	# Touch: taller targets so thumbs don't fat-finger the wrong row.
+	b.custom_minimum_size = Vector2(430, 62 if Game.is_touch() else 52)
 	if accent.a > 0.0:
 		# Sticker-colored text + matching edge: makes menus read as a bright
 		# toy box instead of a wall of identical olive plates.
@@ -298,10 +307,14 @@ func _show_main_menu() -> void:
 	_button(box, "BARRACKS  —  SOLDIER SKINS", _show_barracks, UiTheme.PURPLE)
 	_button(box, "QUIT", func(): get_tree().quit(), UiTheme.RED)
 	_spacer(box, 22)
-	_subtitle(box, "WASD move   SHIFT sprint   SPACE jump   MOUSE aim/fire   RMB zoom
+	if Game.is_touch():
+		_subtitle(box, "LEFT THUMB move (push to rim = sprint)   RIGHT THUMB drag to look
+FIRE / JUMP / AIM buttons bottom-right   E interact   1-2-3 squad orders", 13, Color(0.72, 0.76, 0.7))
+	else:
+		_subtitle(box, "WASD move   SHIFT sprint   SPACE jump   MOUSE aim/fire   RMB zoom
 R reload   Q swap weapon   E interact / rescue / vehicles   1-2-3 squad orders   ESC pause", 13, Color(0.72, 0.76, 0.7))
-	if OS.has_feature("web"):
-		_subtitle(box, "Browser: click once in-mission to lock the mouse.", 12, Color(0.7, 0.82, 0.95))
+		if OS.has_feature("web"):
+			_subtitle(box, "Browser: click once in-mission to lock the mouse.", 12, Color(0.7, 0.82, 0.95))
 	var version := Label.new()
 	version.text = "PRE-ALPHA 0.4  —  TOYBOX DIVISION"
 	version.add_theme_font_size_override("font_size", 12)
@@ -323,7 +336,7 @@ func _show_campaign() -> void:
 	for id in MISSION_ORDER:
 		var mission_id: String = id
 		var beaten: bool = id in Game.completed_missions
-		var accent: Color = UiTheme.GREEN if not id.begins_with("trench") else UiTheme.ORANGE
+		var accent: Color = UiTheme.ORANGE if id in ["trenches", "laundry"] else UiTheme.GREEN
 		var label: String = MISSIONS[id][0]
 		if beaten:
 			label += "   [CLEARED]"
@@ -825,8 +838,11 @@ func _on_victory(title: String) -> void:
 	Game.state = Game.State.VICTORY
 	if current_mission_id in MISSION_ORDER:
 		Game.mark_mission_complete(current_mission_id)
-	# Let the moment breathe before the screen appears.
-	await get_tree().create_timer(2.0).timeout
+	# Victory lap: the soldier turns to camera and waves while the moment
+	# breathes, then the screen appears.
+	if Game.player != null and is_instance_valid(Game.player):
+		Game.player.celebrate()
+	await get_tree().create_timer(2.6).timeout
 	Game.release_mouse()
 	var box := _menu_base(0.62)
 	_title(box, "MISSION COMPLETE", 58, UiTheme.GREEN)

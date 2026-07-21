@@ -17,15 +17,15 @@ extends CharacterBody3D
 signal defeated
 
 const CONTACT_DAMAGE := 25.0
-const SUCTION_RANGE := 16.0
+const SUCTION_RANGE := 14.0
 const SUCTION_HALF_ANGLE := 0.6   # radians
-const CHARGE_WINDUP := 0.9
-const CHARGE_SPEED := 13.0
+const CHARGE_WINDUP := 1.3
+const CHARGE_SPEED := 10.5
 const CHARGE_MAX_TIME := 1.5
 
 var filters_alive := 3
 var _target: Node3D = null
-var _phase_speed := 2.6
+var _phase_speed := 2.0
 var _charge_timer := 0.0
 var _charging := false
 var _windup := 0.0
@@ -141,12 +141,24 @@ func _build_visual() -> void:
 	dust.mesh = dm
 	_body_tilt.add_child(dust)
 
-	# The three filter pods — actual damageable children, on the top deck.
+	# The three filter pods — actual damageable children. They ride on visible
+	# antenna masts ABOVE the armored hull and its collision cylinder (which
+	# tops out at y=3.2): a pod buried inside the body collider can never be
+	# hit, which made the old boss unkillable.
 	for i in 3:
+		var mast := MeshInstance3D.new()
+		var mm := CylinderMesh.new()
+		mm.top_radius = 0.12
+		mm.bottom_radius = 0.18
+		mm.height = 2.2
+		mast.mesh = mm
+		mast.material_override = dark
+		mast.position = Vector3(sin(i * TAU / 3.0) * 2.3, 3.3, cos(i * TAU / 3.0) * 2.3)
+		_body_tilt.add_child(mast)
 		var pod := VacuumFilter.new()
 		pod.boss = self
 		_body_tilt.add_child(pod)
-		pod.position = Vector3(sin(i * TAU / 3.0) * 1.9, 3.1, cos(i * TAU / 3.0) * 1.9)
+		pod.position = Vector3(sin(i * TAU / 3.0) * 2.3, 4.7, cos(i * TAU / 3.0) * 2.3)
 
 func filter_destroyed() -> void:
 	filters_alive -= 1
@@ -154,10 +166,10 @@ func filter_destroyed() -> void:
 	Missions.progress("filters")
 	match filters_alive:
 		2:
-			_phase_speed = 3.6
+			_phase_speed = 2.7
 			Events.notify.emit("Filter destroyed! The Vacuum is angry — it's hunting YOU now.")
 		1:
-			_phase_speed = 4.4
+			_phase_speed = 3.3
 			Events.notify.emit("One filter left! WATCH OUT — it charges!")
 		0:
 			_die()
@@ -315,11 +327,11 @@ func _apply_suction(delta: float) -> void:
 	flat.y = 0.0
 	if forward.angle_to(flat.normalized()) > SUCTION_HALF_ANGLE:
 		return
-	# Pull strength grows near the maw.
-	var strength := (1.0 - to_target.length() / SUCTION_RANGE) * 22.0 + 5.0
+	# Pull strength grows near the maw — firm, but escapable by sprinting.
+	var strength := (1.0 - to_target.length() / SUCTION_RANGE) * 14.0 + 4.0
 	var pull := -flat.normalized() * strength   # points from target toward the intake
 	if _target is CharacterBody3D:
-		_target.velocity += pull * delta * 2.2
+		_target.velocity += pull * delta * 1.8
 
 func _check_contact() -> void:
 	if _target == null:
@@ -355,24 +367,37 @@ class VacuumFilter:
 
 	func _ready() -> void:
 		collision_layer = 0b0010
+		# In "enemies" so squadmates focus-fire pods and the player's aim
+		# assist bends shots onto them instead of the armored hull.
+		add_to_group("enemies")
 		health = Health.new()
-		health.setup(90.0)
+		health.setup(80.0)
 		health.died.connect(func(_a):
 			boss.filter_destroyed()
 			queue_free())
 		add_child(health)
 		var shape := CollisionShape3D.new()
 		var sphere := SphereShape3D.new()
-		sphere.radius = 0.9
+		sphere.radius = 1.25
 		shape.shape = sphere
 		add_child(shape)
 		var mesh := MeshInstance3D.new()
 		var sm := SphereMesh.new()
-		sm.radius = 0.85
-		sm.height = 1.7
+		sm.radius = 1.1
+		sm.height = 2.2
 		mesh.mesh = sm
-		mesh.material_override = ToyMaterials.glow(Color(0.4, 1.0, 0.6), 2.5)
+		mesh.material_override = ToyMaterials.glow(Color(0.4, 1.0, 0.6), 3.0)
 		add_child(mesh)
+		# Beacon light so the weak points read from across the room.
+		var beacon := OmniLight3D.new()
+		beacon.light_color = Color(0.4, 1.0, 0.6)
+		beacon.light_energy = 2.2
+		beacon.omni_range = 6.0
+		add_child(beacon)
+		# Slow pulse: "shoot me" in universal videogame language.
+		var tw := create_tween().set_loops()
+		tw.tween_property(mesh, "scale", Vector3.ONE * 1.18, 0.55).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(mesh, "scale", Vector3.ONE, 0.55).set_trans(Tween.TRANS_SINE)
 
 	func take_damage(amount: float, attacker: Node = null) -> void:
 		health.damage(amount, attacker)

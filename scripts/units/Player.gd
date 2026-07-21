@@ -123,8 +123,10 @@ func _apply_slot() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not Game.is_playing() or current_vehicle != null:
 		return
-	# Web: first click captures the mouse (required by browsers).
-	if OS.has_feature("web") and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+	# Web: first click captures the mouse (required by browsers). Touch
+	# devices skip pointer lock entirely — TouchControls drives the look.
+	if OS.has_feature("web") and not Game.is_touch() \
+			and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		if event is InputEventMouseButton and event.pressed:
 			Game.capture_mouse()
 		return
@@ -132,9 +134,28 @@ func _unhandled_input(event: InputEvent) -> void:
 		_yaw -= event.relative.x * MOUSE_SENS
 		_pitch = clampf(_pitch - event.relative.y * MOUSE_SENS, -1.2, 0.7)
 
+## Touch look-drag accumulated by TouchControls; consumed once per frame.
+func _consume_touch_look() -> void:
+	if Game.touch_look == Vector2.ZERO:
+		return
+	_yaw -= Game.touch_look.x
+	_pitch = clampf(_pitch - Game.touch_look.y, -1.2, 0.7)
+	Game.touch_look = Vector2.ZERO
+
 func _physics_process(delta: float) -> void:
+	if _dying or _celebrating:
+		# Cinematic moments (death keel-over, victory wave): gravity only, no
+		# input. Runs even in VICTORY state, so land softly if we were mid-jump.
+		if not get_tree().paused:
+			if not is_on_floor():
+				velocity.y -= 30.0 * delta
+			velocity.x = move_toward(velocity.x, 0.0, 20.0 * delta)
+			velocity.z = move_toward(velocity.z, 0.0, 20.0 * delta)
+			move_and_slide()
+		return
 	if current_vehicle != null or not Game.is_playing():
 		return
+	_consume_touch_look()
 	_update_camera(delta)
 	_update_movement(delta)
 	_update_aim_probe()
@@ -387,12 +408,48 @@ func take_damage(amount: float, attacker: Node = null) -> void:
 	Sfx.play("hurt", -6.0)
 	_shake = minf(_shake + 0.5, 2.0)
 
+## Mission won: down weapon, spin to face the camera, and wave at the player.
+## Runs during Main's victory breather before the menu appears.
+var _celebrating := false
+func celebrate() -> void:
+	if _dying or _celebrating:
+		return
+	_celebrating = true
+	# Winners are invincible — a stray last bullet must not ruin the moment.
+	collision_layer = 0
+	if body_rig != null:
+		var tw := create_tween()
+		tw.tween_property(body_rig, "rotation:y", _yaw + PI, 0.45) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	if _anim != null and _anim.has_animation("Jump"):
+		play_anim("Jump", 0.15)
+	get_tree().create_timer(0.6).timeout.connect(func():
+		if is_instance_valid(self) and _anim != null and _anim.has_animation("Wave"):
+			play_anim("Wave", 0.2))
+
+var _dying := false
 func _on_died(_attacker: Node) -> void:
-	Fx.plastic_shatter(self, global_position + Vector3.UP * 0.7, faction.primary_color)
+	# Toy-soldier death cinematic: the mold keels over in slow motion while
+	# the camera lingers, THEN shatters. No more instant despawn.
+	_dying = true
+	collision_layer = 0
+	velocity = Vector3.ZERO
 	Sfx.play("death")
-	Events.unit_died.emit(self)
-	Events.player_died.emit()
-	queue_free()
+	Engine.time_scale = 0.35
+	if _anim != null and _anim.has_animation("Death"):
+		play_anim("Death", 0.1)
+	elif body_rig != null:
+		# Fallback rig has no Death clip: tip over sideways like a knocked toy.
+		var tip := create_tween()
+		tip.tween_property(body_rig, "rotation:z", PI / 2.0, 0.5) \
+			.set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	# Real-time timer (ignores the slow-mo) ends the moment.
+	get_tree().create_timer(1.1, true, false, true).timeout.connect(func():
+		Engine.time_scale = 1.0
+		Fx.plastic_shatter(self, global_position + Vector3.UP * 0.7, faction.primary_color)
+		Events.unit_died.emit(self)
+		Events.player_died.emit()
+		queue_free())
 
 func enter_vehicle(vehicle: Node) -> void:
 	current_vehicle = vehicle

@@ -82,10 +82,26 @@ func _flinch() -> void:
 	tween.tween_property(body_rig, "scale", Vector3.ONE, 0.1)
 
 func _on_died(attacker: Node) -> void:
-	Fx.plastic_shatter(self, global_position + Vector3.UP * 0.7, faction.primary_color)
+	# Game logic fires immediately (kill counters, respawn queues, loot)...
 	Sfx.play_at("death", global_position)
 	Events.unit_died.emit(self)
 	_drop_loot()
+	# ...but the toy keels over and lies there for a beat before shattering,
+	# instead of blinking out of existence.
+	collision_layer = 0
+	set_physics_process(false)
+	if health_bar != null:
+		health_bar.visible = false
+	if _anim != null and _anim.has_animation("Death"):
+		play_anim("Death", 0.1)
+		get_tree().create_timer(1.5).timeout.connect(func():
+			if is_instance_valid(self):
+				_shatter_and_free())
+	else:
+		_shatter_and_free()
+
+func _shatter_and_free() -> void:
+	Fx.plastic_shatter(self, global_position + Vector3.UP * 0.7, faction.primary_color)
 	queue_free()
 
 func _drop_loot() -> void:
@@ -131,6 +147,33 @@ func animate_waddle(delta: float, moving: bool) -> void:
 func play_anim(anim_name: String, blend: float = 0.25, speed: float = 1.0) -> void:
 	if _anim != null and _anim.has_animation(anim_name) and _anim.current_animation != anim_name:
 		_anim.play(anim_name, blend, speed)
+
+## Vault if blocked at knee height but clear at head height (low crates,
+## books, sandbag lips). Shared by all AI soldiers — same jump power as the
+## player, so parity feels fair. Returns false if it's a wall, not a ledge.
+func try_vault() -> bool:
+	if not is_on_floor():
+		return false
+	var fwd := Vector3(velocity.x, 0, velocity.z)
+	if fwd.length() < 0.5:
+		fwd = -body_rig.global_transform.basis.z if body_rig != null else -global_transform.basis.z
+	fwd = fwd.normalized()
+	var space := get_world_3d().direct_space_state
+	var knee := PhysicsRayQueryParameters3D.create(
+		global_position + Vector3.UP * 0.35, global_position + Vector3.UP * 0.35 + fwd * 1.2)
+	knee.collision_mask = 0b0001
+	if space.intersect_ray(knee).is_empty():
+		return false   # nothing low blocking; stuck on something else
+	var head := PhysicsRayQueryParameters3D.create(
+		global_position + Vector3.UP * 2.2, global_position + Vector3.UP * 2.2 + fwd * 2.0)
+	head.collision_mask = 0b0001
+	if not space.intersect_ray(head).is_empty():
+		return false   # a wall, not a ledge — don't bonk
+	velocity.y = 13.0
+	velocity.x = fwd.x * move_speed
+	velocity.z = fwd.z * move_speed
+	Fx.dust(self, global_position)
+	return true
 
 ## Turns only the body rig, never the CharacterBody3D node itself — the
 ## player's camera is a child of the node and must not inherit body turns.

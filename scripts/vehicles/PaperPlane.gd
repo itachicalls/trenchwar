@@ -99,6 +99,11 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if not Game.is_playing():
 		return
+	# Touch look-drag flies the plane.
+	if driver != null and Game.touch_look != Vector2.ZERO:
+		_pitch = clampf(_pitch + Game.touch_look.y * 0.6, -0.9, 0.9)
+		_roll = clampf(_roll - Game.touch_look.x * 0.8, -1.1, 1.1)
+		Game.touch_look = Vector2.ZERO
 	if driver == null:
 		_check_mount()
 		if not is_on_floor():

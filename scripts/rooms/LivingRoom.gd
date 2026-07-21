@@ -89,9 +89,21 @@ func _build_couch_mountains() -> void:
 		_landmark_box(couch, Vector3(36.5, 10, 3), Vector3(9, 20, 26))
 	else:
 		_static_box(Vector3(0, 5, couch_z), Vector3(80, 10, 22), ToyMaterials.soft(Color(0.35, 0.42, 0.55)))
-	# Fallen-magazine ramp up the west armrest.
-	var ramp := _static_box(Vector3(-50, 6.4, couch_z + 24), Vector3(10, 1.2, 24), ToyMaterials.plastic(Color(0.8, 0.75, 0.65), 0.7))
-	ramp.rotation_degrees.x = -27.0
+	# Fallen-magazine ramp up onto the seat deck. Sized so the low end rests
+	# on the floor and the high end actually meets the seat (y=14) — the old
+	# one stopped short mid-air and read as a floating white beam.
+	# On the EAST armrest — parked at the west end it loomed across the
+	# player's entire spawn sightline like a wall.
+	var ramp := _static_box(Vector3(50, 7.2, couch_z + 24), Vector3(9, 1.4, 28), ToyMaterials.plastic(Color(0.92, 0.9, 0.84), 0.55))
+	ramp.rotation_degrees.x = -30.0
+	# Glossy cover art stripe so it reads as a magazine, not a plank.
+	var cover := MeshInstance3D.new()
+	var cover_mesh := BoxMesh.new()
+	cover_mesh.size = Vector3(8.6, 0.15, 12)
+	cover.mesh = cover_mesh
+	cover.material_override = ToyMaterials.plastic(Color(0.85, 0.3, 0.25), 0.2)
+	cover.position = Vector3(0, 0.75, 6)
+	ramp.add_child(cover)
 	# A dropped TV remote on the seat deck: future secret interaction.
 	_static_box(Vector3(0, 14.8, couch_z + 4), Vector3(3, 1.2, 8), ToyMaterials.plastic(Color(0.12, 0.12, 0.14)))
 

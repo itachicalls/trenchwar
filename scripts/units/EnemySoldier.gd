@@ -120,7 +120,7 @@ func _detect_stuck(delta: float) -> void:
 		_stuck_time = 0.0
 		return
 	# Early response: obstacle is knee-high and clear above? Vault it.
-	if _stuck_time > 0.4 and is_on_floor() and _try_hop():
+	if _stuck_time > 0.4 and try_vault():
 		_stuck_time = 0.0
 		return
 	if _stuck_time > 1.8:
@@ -132,30 +132,6 @@ func _detect_stuck(delta: float) -> void:
 		Fx.dust(self, global_position)
 		if state == AiState.COMBAT:
 			state = AiState.ALERT   # re-path via the navmesh instead of beelining
-
-## Hop if blocked at knee height but clear at head height (low crates, books,
-## sandbag lips). Same jump power as the player, so parity feels fair.
-func _try_hop() -> bool:
-	var fwd := Vector3(velocity.x, 0, velocity.z)
-	if fwd.length() < 0.5:
-		fwd = -body_rig.global_transform.basis.z if body_rig != null else -global_transform.basis.z
-	fwd = fwd.normalized()
-	var space := get_world_3d().direct_space_state
-	var knee := PhysicsRayQueryParameters3D.create(
-		global_position + Vector3.UP * 0.35, global_position + Vector3.UP * 0.35 + fwd * 1.2)
-	knee.collision_mask = 0b0001
-	if space.intersect_ray(knee).is_empty():
-		return false   # nothing low blocking; stuck on something else
-	var head := PhysicsRayQueryParameters3D.create(
-		global_position + Vector3.UP * 2.2, global_position + Vector3.UP * 2.2 + fwd * 2.0)
-	head.collision_mask = 0b0001
-	if not space.intersect_ray(head).is_empty():
-		return false   # a wall, not a ledge — don't bonk
-	velocity.y = 13.0
-	velocity.x = fwd.x * move_speed
-	velocity.z = fwd.z * move_speed
-	Fx.dust(self, global_position)
-	return true
 
 ## ---- decision layer (runs at 4 Hz) ----
 func _think() -> void:
@@ -249,6 +225,15 @@ func _do_combat(delta: float) -> void:
 			_strafe_timer = randf_range(0.8, 2.0)
 			_strafe_dir = -_strafe_dir
 		var side := to_target.cross(Vector3.UP).normalized() * _strafe_dir
+		# Probe the strafe direction: about to grind into furniture? Flip
+		# early instead of sanding the couch for two seconds.
+		var probe := PhysicsRayQueryParameters3D.create(
+			global_position + Vector3.UP * 0.6, global_position + Vector3.UP * 0.6 + side * 1.6)
+		probe.collision_mask = 0b0001
+		if not get_world_3d().direct_space_state.intersect_ray(probe).is_empty():
+			_strafe_dir = -_strafe_dir
+			_strafe_timer = randf_range(0.8, 2.0)
+			side = -side
 		var wish := side * 0.6
 		if dist < attack_range * 0.4:
 			wish += -to_target.normalized()
