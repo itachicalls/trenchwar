@@ -303,7 +303,9 @@ func _is_hostile(c: Object) -> bool:
 var _assist_target: Node3D = null
 func _apply_aim_assist(from: Vector3, dir: Vector3) -> void:
 	var best: Node3D = null
-	var best_angle := deg_to_rad(7.0)
+	# Thumbs are coarser than mice: touch gets a wider assist cone.
+	var cone := deg_to_rad(10.0 if Game.is_touch() else 7.0)
+	var best_angle := cone
 	var candidates: Array[Node] = []
 	candidates.append_array(get_tree().get_nodes_in_group("enemies"))
 	candidates.append_array(get_tree().get_nodes_in_group("combat_bots"))
@@ -333,7 +335,7 @@ func _apply_aim_assist(from: Vector3, dir: Vector3) -> void:
 		_assist_target = best
 		# Pull strength grows as the crosshair gets closer to the target:
 		# near-misses become hits, wild shots still miss.
-		var strength: float = lerpf(0.9, 0.45, clampf(best_angle / deg_to_rad(7.0), 0.0, 1.0))
+		var strength: float = lerpf(0.9, 0.45, clampf(best_angle / cone, 0.0, 1.0))
 		# Lead moving targets so the assist works on strafing bots too.
 		if best is CharacterBody3D:
 			var travel: float = chest.distance_to(from) / maxf(weapon.data.projectile_speed, 1.0)

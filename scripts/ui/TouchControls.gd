@@ -14,8 +14,9 @@ extends CanvasLayer
 ## All buttons drive the same input actions the keyboard uses, so vehicles,
 ## rescues and menus need zero special-casing.
 
-## Radians turned by dragging a full screen-height. ~126° feels controllable.
-const LOOK_TURN := 2.2
+## Radians turned by dragging a full screen-height. ~172° — quick enough to
+## check your back in one thumb sweep without feeling twitchy.
+const LOOK_TURN := 3.0
 
 var _stick_finger := -1
 var _stick_home := Vector2.ZERO      # resting position of the base
@@ -28,6 +29,7 @@ var _aim_on := false
 var _canvas: Control            # full-screen draw surface (joystick visuals)
 var _buttons: Array[Dictionary] = []   # {pos, radius, action, label, toggle, held}
 var _last_vp := Vector2.ZERO
+var _safe_origin := Vector2.ZERO   # top-left of the notch-safe rect
 
 func _ready() -> void:
 	layer = 55
@@ -37,6 +39,12 @@ func _ready() -> void:
 	_canvas.draw.connect(_draw_controls)
 	add_child(_canvas)
 	_layout()
+	# Haptics (no-op on devices without a vibrator, incl. desktop browsers):
+	# a firm buzz when hurt, a tick on kill confirms. Combat you can feel.
+	Events.player_damaged.connect(func(): Input.vibrate_handheld(60))
+	Events.hit_confirmed.connect(func(killed: bool):
+		if killed:
+			Input.vibrate_handheld(30))
 
 func _layout() -> void:
 	var vp := _canvas.get_viewport_rect().size
@@ -44,8 +52,24 @@ func _layout() -> void:
 	# Everything sized off the SHORT edge: consistent thumb size in both
 	# orientations and on tablets.
 	var u := minf(vp.x, vp.y) / 100.0   # 1u = 1% of short edge
+	# Notch/home-bar safe area: shrink the usable rect so no control hides
+	# under a camera cutout or the iOS swipe bar. (Window coords -> canvas
+	# coords share the same scale here since the canvas fills the window.)
+	var win := Vector2(DisplayServer.window_get_size())
+	if win.x > 0.0 and win.y > 0.0:
+		var safe := DisplayServer.get_display_safe_area()
+		var to_canvas := vp / win
+		var left := maxf(safe.position.x, 0.0) * to_canvas.x
+		var top := maxf(safe.position.y, 0.0) * to_canvas.y
+		var right := maxf(win.x - safe.end.x, 0.0) * to_canvas.x
+		var bottom := maxf(win.y - safe.end.y, 0.0) * to_canvas.y
+		vp = Vector2(vp.x - left - right, vp.y - top - bottom)
+		# Re-anchor: all positions below are relative to the safe rect.
+		_safe_origin = Vector2(left, top)
+	else:
+		_safe_origin = Vector2.ZERO
 	_stick_radius = 15.0 * u
-	_stick_home = Vector2(19.0 * u, vp.y - 21.0 * u)
+	_stick_home = _safe_origin + Vector2(19.0 * u, vp.y - 21.0 * u)
 	# Right-hand cluster fans in an arc around FIRE. Every pair of circles is
 	# spaced so their TAP zones (radius * 1.15) never intersect — the old
 	# layout let fire/jump/aim/swap hit areas overlap each other (and the
@@ -74,6 +98,8 @@ func _layout() -> void:
 		{"id": "pause", "pos": Vector2(vp.x - 8.0 * u, 8.0 * u), "radius": 5.0 * u,
 			"action": "pause", "label": "II", "toggle": false, "held": false},
 	]
+	for b in _buttons:
+		b.pos += _safe_origin
 	_canvas.queue_redraw()
 
 func _process(_delta: float) -> void:
@@ -174,7 +200,17 @@ func _touch_drag(finger: int, pos: Vector2, relative: Vector2) -> void:
 	if finger == _stick_finger:
 		var v := (pos - _stick_origin) / _stick_radius
 		_stick_vec = v.limit_length(1.0)
-	elif finger == _look_finger:
+		return
+	# The FIRE thumb also steers: dragging while holding fire tracks targets
+	# like every mobile shooter — without it you're a stationary turret.
+	var is_fire_finger := false
+	for b in _buttons:
+		if b.get("finger", -1) == finger:
+			if b.id != "fire":
+				return   # other buttons: taps only, no hidden look input
+			is_fire_finger = true
+			break
+	if finger == _look_finger or is_fire_finger:
 		var vp := _canvas.get_viewport_rect().size
 		# Ignore bogus giant deltas (browser touch quirks) instead of whipping
 		# the camera across the room.

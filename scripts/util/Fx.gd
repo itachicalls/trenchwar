@@ -104,7 +104,7 @@ static func dust(node: Node, position: Vector3, big: bool = false) -> void:
 ## Capped: with fast weapons, dozens of live Label3Ds tanked the frame rate.
 static var _live_numbers := 0
 static func damage_number(node: Node, position: Vector3, amount: float, killed: bool) -> void:
-	if _live_numbers >= 12 and not killed:
+	if _live_numbers >= (6 if Game.low_gfx() else 12) and not killed:
 		return
 	_live_numbers += 1
 	var root := _root(node)

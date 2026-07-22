@@ -21,7 +21,9 @@ static func make_night_environment(fog_color: Color, ambient: Color, ambient_ene
 	env.ambient_light_energy = ambient_energy
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.tonemap_exposure = 1.35
-	env.glow_enabled = true
+	# Bloom is a full-screen post pass — phones skip it, emissive materials
+	# still read bright without it.
+	env.glow_enabled = not Game.is_touch()
 	env.glow_intensity = 0.7
 	env.glow_bloom = 0.15
 	env.glow_hdr_threshold = 0.9
@@ -45,10 +47,14 @@ static func make_night_environment(fog_color: Color, ambient: Color, ambient_ene
 ##   FILL — soft opposite-side bounce, no shadows, lifts the dark side
 ##   RIM  — cool top-back edge light, separates toys from the carpet
 static func add_light_rig(parent: Node, key_rotation_deg: Vector3, key_color: Color, key_energy: float) -> DirectionalLight3D:
+	# Phones: every DirectionalLight3D is a full extra pass over ALL geometry
+	# on the Compatibility renderer, and shadow maps are the single biggest
+	# GPU line item. Two lights, no shadows, key brightened to compensate.
+	var touch := Game.is_touch()
 	var key := DirectionalLight3D.new()
 	key.light_color = key_color
-	key.light_energy = key_energy
-	key.shadow_enabled = true
+	key.light_energy = key_energy * (1.18 if touch else 1.0)
+	key.shadow_enabled = not touch
 	key.shadow_opacity = 0.72          # shadows stay readable, never pitch black
 	key.shadow_blur = 1.6
 	key.rotation_degrees = key_rotation_deg
@@ -61,12 +67,13 @@ static func add_light_rig(parent: Node, key_rotation_deg: Vector3, key_color: Co
 	fill.rotation_degrees = Vector3(-32, key_rotation_deg.y + 165.0, 0)
 	parent.add_child(fill)
 
-	var rim := DirectionalLight3D.new()
-	rim.light_color = Color(0.75, 0.85, 1.0)
-	rim.light_energy = key_energy * 0.55
-	rim.shadow_enabled = false
-	rim.rotation_degrees = Vector3(-64, key_rotation_deg.y + 100.0, 0)
-	parent.add_child(rim)
+	if not touch:
+		var rim := DirectionalLight3D.new()
+		rim.light_color = Color(0.75, 0.85, 1.0)
+		rim.light_energy = key_energy * 0.55
+		rim.shadow_enabled = false
+		rim.rotation_degrees = Vector3(-64, key_rotation_deg.y + 100.0, 0)
+		parent.add_child(rim)
 	return key
 
 ## Register a light to flicker organically (TV static, nightlight breathing).
@@ -247,7 +254,8 @@ func add_prop(prop_name: String, pos: Vector3, yaw_deg: float = 0.0, target_size
 ## Drifting ambient dust motes: cheap, huge atmosphere win in dark rooms.
 func add_dust_motes(center: Vector3, extents: Vector3, amount: int = 40, color: Color = Color(0.9, 0.85, 0.7)) -> void:
 	var motes := CPUParticles3D.new()
-	motes.amount = amount
+	# Ambience is the first thing to thin out on weak GPUs.
+	motes.amount = amount / 2 if Game.low_gfx() else amount
 	motes.lifetime = 7.0
 	motes.preprocess = 7.0
 	motes.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
