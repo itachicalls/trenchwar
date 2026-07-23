@@ -263,9 +263,10 @@ func _physics_process(delta: float) -> void:
 	_fold_node_yaw()
 	_consume_touch_look()
 	_consume_gyro(delta)
+	_update_aim_probe()
+	_apply_lock_magnet(delta)
 	_update_camera(delta)
 	_update_movement(delta)
-	_update_aim_probe()
 	_update_combat()
 	_update_interactions()
 	_update_regen(delta)
@@ -311,15 +312,16 @@ func _is_hostile(c: Object) -> bool:
 	return n.is_in_group("combat_bots") and "faction" in n and n.faction != null \
 		and faction.hostile_to(n.faction)
 
-## Soft aim lock: if a hostile is within a ~7° cone of the crosshair (and
-## visible), shots bend hard toward their chest. The camera never moves —
-## only the fired projectile direction is helped — and it prefers to stay on
-## the current target so the lock doesn't ping-pong between clustered enemies.
+## Aim assist / lock. Campaign gets a sticky lock with mild camera magnetism;
+## arenas stay lighter so PvE skirmish still rewards aim.
 var _assist_target: Node3D = null
 func _apply_aim_assist(from: Vector3, dir: Vector3) -> void:
 	var best: Node3D = null
-	# Thumbs are coarser than mice: touch gets a wider assist cone.
-	var cone := deg_to_rad(10.0 if Game.is_touch() else 7.0)
+	var campaign := Game.in_campaign()
+	var cone_deg := 16.0 if campaign else (10.0 if Game.is_touch() else 7.0)
+	if campaign and Game.is_touch():
+		cone_deg = 20.0
+	var cone := deg_to_rad(cone_deg)
 	var best_angle := cone
 	var candidates: Array[Node] = []
 	candidates.append_array(get_tree().get_nodes_in_group("enemies"))
@@ -330,13 +332,12 @@ func _apply_aim_assist(from: Vector3, dir: Vector3) -> void:
 			var chest: Vector3 = (e as Node3D).global_position + Vector3.UP * 0.8
 			var to := chest - from
 			var d := to.length()
-			if d < 2.0 or d > 65.0:
+			if d < 2.0 or d > (80.0 if campaign else 65.0):
 				continue
 			var angle := dir.angle_to(to / d)
-			# Stickiness: the current target wins ties inside a wider cone,
-			# so tracking one enemy through a crowd feels locked-on.
+			# Stickiness: current target wins ties inside a wider cone.
 			if e == _assist_target:
-				angle *= 0.55
+				angle *= 0.35 if campaign else 0.55
 			if angle < best_angle:
 				best_angle = angle
 				best = e
@@ -348,16 +349,41 @@ func _apply_aim_assist(from: Vector3, dir: Vector3) -> void:
 	los.collision_mask = 0b0001   # only world geometry blocks the assist
 	if get_world_3d().direct_space_state.intersect_ray(los).is_empty():
 		_assist_target = best
-		# Pull strength grows as the crosshair gets closer to the target:
-		# near-misses become hits, wild shots still miss.
-		var strength: float = lerpf(0.9, 0.45, clampf(best_angle / cone, 0.0, 1.0))
-		# Lead moving targets so the assist works on strafing bots too.
+		var strength: float = lerpf(
+			0.97 if campaign else 0.9,
+			0.72 if campaign else 0.45,
+			clampf(best_angle / cone, 0.0, 1.0))
 		if best is CharacterBody3D:
 			var travel: float = chest.distance_to(from) / maxf(weapon.data.projectile_speed, 1.0)
-			chest += (best as CharacterBody3D).velocity * travel * 0.6
+			chest += (best as CharacterBody3D).velocity * travel * (0.85 if campaign else 0.6)
 		_aim_point = _aim_point.lerp(chest, strength)
 	else:
 		_assist_target = null
+
+## Campaign soft lock: gently magnetize the camera toward the locked chest so
+## tracking a sprinting Chrome feels sticky without full aimbot.
+func _apply_lock_magnet(delta: float) -> void:
+	if not Game.in_campaign() or _assist_target == null or not is_instance_valid(_assist_target):
+		return
+	if _camera == null:
+		return
+	var chest: Vector3 = _assist_target.global_position + Vector3.UP * 0.85
+	var to: Vector3 = chest - _camera.global_position
+	if to.length_squared() < 0.01:
+		return
+	var want := to.normalized()
+	var flat := Vector3(want.x, 0.0, want.z)
+	if flat.length_squared() < 0.0001:
+		return
+	var want_yaw := atan2(-flat.x, -flat.z)
+	var want_pitch := asin(clampf(want.y, -0.95, 0.95))
+	# Only pull when already roughly on target — wild flicks stay free.
+	var yaw_err := absf(wrapf(want_yaw - _yaw, -PI, PI))
+	if yaw_err > deg_to_rad(22.0):
+		return
+	var pull := 3.2 * delta if Game.is_touch() else 2.4 * delta
+	_yaw = lerp_angle(_yaw, want_yaw, pull)
+	_pitch = clampf(lerpf(_pitch, -want_pitch, pull), -1.2, 0.7)
 
 func _update_camera(delta: float) -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")

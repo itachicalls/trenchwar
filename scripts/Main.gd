@@ -237,33 +237,44 @@ func _apply_mobile_ui_scale() -> void:
 		return
 	if not Game.compact_ui():
 		get_tree().root.content_scale_factor = 1.0
+		UiTheme.invalidate()
 		return
-	# Modest scale: the old formula hit 2–4× and blew 430-wide buttons past
-	# a phone's short edge, clipping titles. Keep text readable, keep width.
+	# Short edge → ~360 design units so type renders large on phones.
+	# Menus are authored for that width (wrap + scroll), never shrink-to-fit.
 	var short := minf(win.x, win.y)
-	var factor := clampf(short / 360.0, 1.0, 1.55)
-	if win.y > win.x:
-		factor = minf(factor, 1.28)
+	var factor := clampf(short / 360.0, 1.2, 2.2)
 	get_tree().root.content_scale_factor = factor
+	UiTheme.invalidate()
 
-## Usable menu column width in content-scale units (side margins preserved).
+## Menu column width in content-scale units. Side gutters stay readable.
 func _menu_width() -> float:
 	var vp := get_viewport().get_visible_rect().size
-	return clampf(vp.x * 0.9, 260.0, 720.0)
+	# Nearly full-bleed on phones — gutters are the MarginContainer's job.
+	var gutter := 0.0 if Game.compact_ui() else 40.0
+	return clampf(vp.x - gutter * 2.0, 280.0, 560.0 if Game.compact_ui() else 720.0)
 
 ## Mission title shortened for narrow screens (drop " — The Room" suffix).
 func _mission_title(mission_id: String) -> String:
 	var full: String = MISSIONS[mission_id][0]
 	if not Game.compact_ui():
 		return full
-	# Drop the room suffix so "ACT 1-3: COUNTER STRIKE — The Kitchen"
-	# becomes "ACT 1-3: COUNTER STRIKE" on a phone.
 	var em := " — "
 	if em in full:
 		return full.get_slice(em, 0).strip_edges()
 	if " - " in full:
 		return full.get_slice(" - ", 0).strip_edges()
 	return full
+
+## Compact: "ACT 1-3" + "COUNTER STRIKE" as two readable lines.
+func _mission_lines(mission_id: String) -> PackedStringArray:
+	var short := _mission_title(mission_id)
+	if ":  " in short:
+		var parts := short.split(":  ", true, 1)
+		return PackedStringArray([parts[0].strip_edges(), parts[1].strip_edges()])
+	if ": " in short:
+		var parts := short.split(": ", true, 1)
+		return PackedStringArray([parts[0].strip_edges(), parts[1].strip_edges()])
+	return PackedStringArray([short])
 
 # ------------------------------------------------------------------ MENUS
 
@@ -287,63 +298,156 @@ func _menu_base(dim: float = 0.55) -> VBoxContainer:
 		bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 		bg.stretch_mode = TextureRect.STRETCH_SCALE
 		themed.add_child(bg)
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	themed.add_child(center)
+	# Margins + scroll: content never clips under notches or browser chrome.
+	var margin := MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var pad := 18 if Game.compact_ui() else 28
+	margin.add_theme_constant_override("margin_left", pad)
+	margin.add_theme_constant_override("margin_right", pad)
+	margin.add_theme_constant_override("margin_top", pad + (12 if Game.compact_ui() else 0))
+	margin.add_theme_constant_override("margin_bottom", pad)
+	themed.add_child(margin)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	margin.add_child(scroll)
 	var box := VBoxContainer.new()
-	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_theme_constant_override("separation", 10 if Game.compact_ui() else 12)
-	box.custom_minimum_size.x = _menu_width()
-	box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	center.add_child(box)
-	# Slide + fade the whole menu in.
+	# Compact: top-align so brand + buttons own the screen (no floating island).
+	# Desktop: keep the classic centered poster.
+	if Game.compact_ui():
+		box.alignment = BoxContainer.ALIGNMENT_BEGIN
+		box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		box.custom_minimum_size.x = _menu_width()
+	else:
+		var center := CenterContainer.new()
+		center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		scroll.add_child(center)
+		box.alignment = BoxContainer.ALIGNMENT_CENTER
+		box.custom_minimum_size.x = _menu_width()
+		box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		center.add_child(box)
+	box.add_theme_constant_override("separation", 16 if Game.compact_ui() else 12)
+	if Game.compact_ui():
+		scroll.add_child(box)
 	box.modulate.a = 0.0
-	var t := create_tween().set_parallel(true)
-	t.tween_property(box, "modulate:a", 1.0, 0.3)
-	box.position.y += 20
-	t.tween_property(box, "position:y", box.position.y - 20, 0.3).set_ease(Tween.EASE_OUT)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(box, "modulate:a", 1.0, 0.28)
+	box.position.y += 16
+	tw.tween_property(box, "position:y", box.position.y - 16, 0.28).set_ease(Tween.EASE_OUT)
 	return box
 
-func _fit_label(l: Label, size: int) -> void:
-	var col := _menu_width()
-	l.custom_minimum_size.x = col
+func _wrap_label(l: Label) -> void:
+	l.custom_minimum_size.x = _menu_width()
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	# Portrait phones: shrink oversized display fonts so they wrap cleanly.
-	if Game.compact_ui() and size >= 40:
-		var scaled := int(clampf(float(size) * (col / 720.0), 22.0, float(size)))
-		l.add_theme_font_size_override("font_size", scaled)
 
 func _title(box: VBoxContainer, text: String, size: int, color: Color) -> Label:
-	var l := UiTheme.heading(text, size, color)
-	_fit_label(l, size)
+	# Compact: keep display sizes BIG — wrap to two lines instead of shrinking.
+	var use := size
+	if Game.compact_ui() and size > 48:
+		use = 48
+	elif Game.compact_ui() and size > 36:
+		use = size
+	var l := UiTheme.heading(text, use, color)
+	_wrap_label(l)
 	box.add_child(l)
 	return l
 
 func _subtitle(box: VBoxContainer, text: String, size: int, color: Color) -> Label:
+	var use := size
+	if Game.compact_ui() and size < 16:
+		use = 16   # never go micro on phones
 	var l := Label.new()
 	l.text = text
-	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_font_override("font", UiTheme.body_font())
+	l.add_theme_font_size_override("font_size", use)
 	l.add_theme_color_override("font_color", color)
-	_fit_label(l, size)
+	_wrap_label(l)
 	box.add_child(l)
 	return l
 
 func _button(box: VBoxContainer, text: String, action: Callable, accent: Color = Color.TRANSPARENT) -> Button:
 	var b := Button.new()
 	b.text = text
-	# Touch: full-column width + taller targets; desktop keeps the old plate.
-	var w := _menu_width() if Game.compact_ui() else 430.0
-	b.custom_minimum_size = Vector2(w, 64 if Game.compact_ui() else 52)
+	var w := _menu_width()
+	b.custom_minimum_size = Vector2(w, 84 if Game.compact_ui() else 52)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL if Game.compact_ui() else Control.SIZE_SHRINK_CENTER
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	if accent.a > 0.0:
-		# Sticker-colored text + matching edge: makes menus read as a bright
-		# toy box instead of a wall of identical olive plates.
+	if Game.compact_ui():
+		# Cream type + accent EDGE only — rainbow text was the "gaudy" look.
+		b.add_theme_font_size_override("font_size", 26)
+		b.add_theme_color_override("font_color", UiTheme.CREAM)
+		b.add_theme_color_override("font_hover_color", UiTheme.AMBER)
+		if accent.a > 0.0:
+			var sb: StyleBoxFlat = UiTheme.build().get_stylebox("normal", "Button").duplicate()
+			sb.border_color = Color(accent.r, accent.g, accent.b, 0.9)
+			sb.set_border_width_all(3)
+			sb.border_width_left = 8
+			b.add_theme_stylebox_override("normal", sb)
+			var hover: StyleBoxFlat = UiTheme.build().get_stylebox("hover", "Button").duplicate()
+			hover.border_color = accent
+			hover.set_border_width_all(3)
+			hover.border_width_left = 8
+			b.add_theme_stylebox_override("hover", hover)
+	elif accent.a > 0.0:
 		b.add_theme_color_override("font_color", accent)
 		var sb: StyleBoxFlat = UiTheme.build().get_stylebox("normal", "Button").duplicate()
-		sb.border_color = Color(accent, 0.55)
+		sb.border_color = Color(accent.r, accent.g, accent.b, 0.7)
+		sb.set_border_width_all(2)
 		b.add_theme_stylebox_override("normal", sb)
 	b.mouse_entered.connect(func(): Sfx.play("click", -16.0))
+	b.pressed.connect(func():
+		Sfx.play("click")
+		action.call())
+	box.add_child(b)
+	return b
+
+## Two-line mission row: act code over the mission name (readable, not cramped).
+func _mission_button(box: VBoxContainer, mission_id: String, action: Callable, accent: Color, cleared: bool = false) -> Button:
+	if not Game.compact_ui():
+		var label: String = MISSIONS[mission_id][0]
+		if cleared:
+			label += "   [CLEARED]"
+		return _button(box, label, action, accent)
+	var lines := _mission_lines(mission_id)
+	var title_line: String = lines[0]
+	var name_line: String = lines[1] if lines.size() > 1 else ""
+	if cleared:
+		name_line = (name_line + "  ✓") if name_line != "" else (title_line + "  ✓")
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(_menu_width(), 84)
+	b.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Nested labels so both lines stay large — Button.text alone can't do hierarchy.
+	var vb := VBoxContainer.new()
+	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.alignment = BoxContainer.ALIGNMENT_CENTER
+	vb.add_theme_constant_override("separation", 2)
+	vb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	b.add_child(vb)
+	var a := Label.new()
+	a.text = title_line
+	a.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	a.add_theme_font_override("font", UiTheme.title_font())
+	a.add_theme_font_size_override("font_size", 15)
+	a.add_theme_color_override("font_color", Color(accent.r, accent.g, accent.b, 0.9))
+	a.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(a)
+	var n := Label.new()
+	n.text = name_line if name_line != "" else title_line
+	n.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	n.add_theme_font_override("font", UiTheme.title_font())
+	n.add_theme_font_size_override("font_size", 22)
+	n.add_theme_color_override("font_color", UiTheme.CREAM)
+	n.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	n.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vb.add_child(n)
+	var sb: StyleBoxFlat = UiTheme.build().get_stylebox("normal", "Button").duplicate()
+	sb.border_color = Color(accent.r, accent.g, accent.b, 0.75)
+	sb.set_border_width_all(3)
+	b.add_theme_stylebox_override("normal", sb)
+	b.add_theme_color_override("font_color", Color(0, 0, 0, 0))  # hide default text
 	b.pressed.connect(func():
 		Sfx.play("click")
 		action.call())
@@ -360,62 +464,66 @@ func _spacer(box: VBoxContainer, height: float) -> void:
 func _show_main_menu() -> void:
 	Game.state = Game.State.MENU
 	_ensure_diorama()
-	var box := _menu_base(0.3)
-	var small := _title(box, "TOY SOLDIERS AT WAR", 22 if Game.compact_ui() else 24, UiTheme.AMBER)
-	small.add_theme_constant_override("outline_size", 5)
-	var big := _title(box, "THE TRENCHES", 56 if Game.compact_ui() else 88, UiTheme.GREEN)
-	big.add_theme_constant_override("shadow_offset_y", 6)
-	_subtitle(box, "When the lights go out, the war begins.", 16 if Game.compact_ui() else 18, Color(0.92, 0.92, 0.85))
-	_spacer(box, 18 if Game.compact_ui() else 28)
+	var box := _menu_base(0.35)
 	if Game.compact_ui():
+		# Stacked brand: hero-sized, wraps cleanly, never micro-scaled.
+		var eyebrow := _title(box, "TOY SOLDIERS AT WAR", 20, UiTheme.AMBER)
+		eyebrow.add_theme_constant_override("outline_size", 4)
+		_title(box, "THE", 40, UiTheme.GREEN)
+		var brand := _title(box, "TRENCHES", 56, UiTheme.GREEN)
+		brand.add_theme_constant_override("shadow_offset_y", 5)
+		_subtitle(box, "When the lights go out,\nthe war begins.", 20, Color(0.95, 0.95, 0.9))
+		_spacer(box, 28)
 		_button(box, "CAMPAIGN", _show_campaign, UiTheme.GREEN)
 		_button(box, "SKIRMISH & ROYALE", _show_modes, UiTheme.CYAN)
 		_button(box, "ARMORY", func(): _show_store(_show_main_menu), UiTheme.AMBER)
 		_button(box, "BARRACKS", _show_barracks, UiTheme.PURPLE)
+		_button(box, "QUIT", func(): get_tree().quit(), UiTheme.RED)
+		_spacer(box, 20)
+		_subtitle(box, "Rotate to landscape to deploy.\nGyro + auto-fire on by default.", 18, UiTheme.CYAN)
 	else:
+		var small := _title(box, "TOY SOLDIERS AT WAR", 24, UiTheme.AMBER)
+		small.add_theme_constant_override("outline_size", 5)
+		var big := _title(box, "THE TRENCHES", 88, UiTheme.GREEN)
+		big.add_theme_constant_override("shadow_offset_y", 6)
+		_subtitle(box, "When the lights go out, the war begins.", 18, Color(0.92, 0.92, 0.85))
+		_spacer(box, 28)
 		_button(box, "CAMPAIGN  —  RETAKE THE HOUSE", _show_campaign, UiTheme.GREEN)
 		_button(box, "SKIRMISH & BATTLE ROYALE", _show_modes, UiTheme.CYAN)
 		_button(box, "ARMORY  —  WEAPONS & UPGRADES", func(): _show_store(_show_main_menu), UiTheme.AMBER)
 		_button(box, "BARRACKS  —  SOLDIER SKINS", _show_barracks, UiTheme.PURPLE)
-	_button(box, "QUIT", func(): get_tree().quit(), UiTheme.RED)
-	_spacer(box, 16 if Game.compact_ui() else 22)
-	if Game.compact_ui():
-		_subtitle(box, "LEFT thumb: move (rim = sprint)\nRIGHT thumb: drag to look\nFIRE / JUMP / AIM on the right\nDouble-tap JUMP + hold = JETPACK", 13, Color(0.72, 0.76, 0.7))
-		_subtitle(box, "Tip: rotate to landscape for the best fight.", 12, UiTheme.CYAN)
-	else:
+		_button(box, "QUIT", func(): get_tree().quit(), UiTheme.RED)
+		_spacer(box, 22)
 		_subtitle(box, "WASD move   SHIFT sprint   SPACE jump   double-tap SPACE + hold = JETPACK   MOUSE aim/fire
 RMB zoom   R reload   Q swap weapon   E interact / rescue / vehicles   1-2-3 squad orders   ESC pause", 13, Color(0.72, 0.76, 0.7))
 		if OS.has_feature("web"):
 			_subtitle(box, "Browser: click once in-mission to lock the mouse.", 12, Color(0.7, 0.82, 0.95))
 	var version := Label.new()
-	version.text = "PRE-ALPHA 0.4  —  TOYBOX DIVISION"
-	version.add_theme_font_size_override("font_size", 12)
-	version.add_theme_color_override("font_color", Color(0.5, 0.55, 0.45))
-	version.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 14)
-	version.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	version.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	version.text = "PRE-ALPHA 0.4"
+	version.add_theme_font_size_override("font_size", 14 if Game.compact_ui() else 12)
+	version.add_theme_color_override("font_color", Color(0.55, 0.6, 0.5))
+	version.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE, Control.PRESET_MODE_MINSIZE, 12)
+	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	menu_layer.get_child(0).add_child(version)
 
 ## Mission select: campaign acts as a bright poster wall.
 func _show_campaign() -> void:
 	var box := _menu_base(0.5)
-	_title(box, "CAMPAIGN", 52, UiTheme.GREEN)
-	_subtitle(box, "The Chrome Legion took the house. Take it back, room by room.", 15, Color(0.85, 0.87, 0.8))
-	_subtitle(box, "COINS  %d" % Game.coins, 15, UiTheme.AMBER)
-	_spacer(box, 14)
-	# Chapters unlock in order: a room is playable once the previous one falls.
+	_title(box, "CAMPAIGN", 42 if Game.compact_ui() else 52, UiTheme.GREEN)
+	_subtitle(box, "Take back the house, room by room.", 17 if Game.compact_ui() else 15, Color(0.88, 0.9, 0.82))
+	_subtitle(box, "COINS  %d" % Game.coins, 18 if Game.compact_ui() else 15, UiTheme.AMBER)
+	_spacer(box, 12)
 	var prev_beaten := true
 	for id in MISSION_ORDER:
 		var mission_id: String = id
 		var beaten: bool = id in Game.completed_missions
 		var accent: Color = UiTheme.ORANGE if id in ["trenches", "laundry"] else UiTheme.GREEN
-		var label: String = _mission_title(id)
-		if beaten:
-			label += "  ✓" if Game.compact_ui() else "   [CLEARED]"
 		if prev_beaten:
-			_button(box, label, func(): _show_briefing(mission_id), accent)
+			_mission_button(box, mission_id, func(): _show_briefing(mission_id), accent, beaten)
 		else:
-			var locked := _button(box, "LOCKED" if Game.compact_ui() else "LOCKED  —  clear the previous chapter", func(): pass, Color(0.5, 0.52, 0.46))
+			var locked := _button(box, "LOCKED", func(): pass, Color(0.5, 0.52, 0.46))
+			if not Game.compact_ui():
+				locked.text = "LOCKED  —  clear the previous chapter"
 			locked.disabled = true
 		prev_beaten = beaten
 	_spacer(box, 10)
@@ -531,13 +639,18 @@ func _clear_diorama() -> void:
 
 func _show_briefing(mission_id: String) -> void:
 	var box := _menu_base(0.6)
-	_title(box, "MISSION BRIEFING", 22 if Game.compact_ui() else 26, Color(0.72, 0.8, 0.62))
-	_title(box, _mission_title(mission_id), 32 if Game.compact_ui() else 40, UiTheme.AMBER)
+	_title(box, "BRIEFING", 20 if Game.compact_ui() else 26, Color(0.72, 0.8, 0.62))
+	if Game.compact_ui():
+		var lines := _mission_lines(mission_id)
+		_title(box, lines[0], 20, UiTheme.AMBER)
+		if lines.size() > 1:
+			_title(box, lines[1], 32, UiTheme.AMBER)
+	else:
+		_title(box, MISSIONS[mission_id][0], 40, UiTheme.AMBER)
 	_spacer(box, 8)
-	var brief := _subtitle(box, MISSIONS[mission_id][2], 14 if Game.compact_ui() else 16, Color(0.88, 0.88, 0.8))
-	brief.custom_minimum_size.x = _menu_width()
-	_spacer(box, 14)
-	_subtitle(box, TIPS[randi() % TIPS.size()], 13 if Game.compact_ui() else 14, UiTheme.CYAN)
+	_subtitle(box, MISSIONS[mission_id][2], 17 if Game.compact_ui() else 16, Color(0.9, 0.9, 0.84))
+	_spacer(box, 12)
+	_subtitle(box, TIPS[randi() % TIPS.size()], 16 if Game.compact_ui() else 14, UiTheme.CYAN)
 	_spacer(box, 18 if Game.compact_ui() else 22)
 	_button(box, "DEPLOY", func():
 		# Capture NOW, inside the click gesture — browsers refuse pointer lock

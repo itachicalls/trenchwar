@@ -30,26 +30,31 @@ static func body_font() -> Font:
 	return _body
 
 static func build() -> Theme:
-	if _theme != null:
+	# Cache per compact mode so phone buttons get the larger type ramp.
+	var want_compact := Game.compact_ui()
+	if _theme != null and _theme.has_meta("compact") and bool(_theme.get_meta("compact")) == want_compact:
 		return _theme
 	var t := Theme.new()
+	t.set_meta("compact", want_compact)
 	t.default_font = body_font()
-	t.default_font_size = 16
+	t.default_font_size = 18 if want_compact else 16
 
 	# --- Buttons: chunky molded-plastic plates that pop on hover ---
-	t.set_stylebox("normal", "Button", _plate(OLIVE, OLIVE_EDGE, 2))
-	t.set_stylebox("hover", "Button", _plate(Color(0.3, 0.4, 0.16, 0.98), AMBER, 3))
-	t.set_stylebox("pressed", "Button", _plate(Color(0.12, 0.16, 0.07, 0.98), AMBER, 3))
-	t.set_stylebox("focus", "Button", _plate(Color(0, 0, 0, 0), AMBER, 1))
+	var pad_x := 22 if want_compact else 18
+	var pad_y := 16 if want_compact else 10
+	t.set_stylebox("normal", "Button", _plate(OLIVE, OLIVE_EDGE, 2, pad_x, pad_y, want_compact))
+	t.set_stylebox("hover", "Button", _plate(Color(0.3, 0.4, 0.16, 0.98), AMBER, 3, pad_x, pad_y, want_compact))
+	t.set_stylebox("pressed", "Button", _plate(Color(0.12, 0.16, 0.07, 0.98), AMBER, 3, pad_x, pad_y, want_compact))
+	t.set_stylebox("focus", "Button", _plate(Color(0, 0, 0, 0), AMBER, 1, pad_x, pad_y, want_compact))
 	t.set_color("font_color", "Button", CREAM)
 	t.set_color("font_hover_color", "Button", AMBER)
 	t.set_color("font_pressed_color", "Button", Color(0.85, 0.7, 0.22))
 	t.set_color("font_disabled_color", "Button", Color(0.6, 0.62, 0.55, 0.6))
 	t.set_font("font", "Button", title_font())
-	t.set_font_size("font_size", "Button", 19)
+	t.set_font_size("font_size", "Button", 22 if want_compact else 19)
 
 	# --- Panels ---
-	t.set_stylebox("panel", "PanelContainer", _plate(OLIVE, OLIVE_EDGE, 2))
+	t.set_stylebox("panel", "PanelContainer", _plate(OLIVE, OLIVE_EDGE, 2, pad_x, pad_y, want_compact))
 
 	# --- Labels: soft drop shadow everywhere for readability on 3D ---
 	t.set_color("font_color", "Label", CREAM)
@@ -58,7 +63,7 @@ static func build() -> Theme:
 	t.set_constant("shadow_offset_y", "Label", 2)
 
 	# --- Progress bars ---
-	var bg := _plate(Color(0.04, 0.05, 0.03, 0.9), Color(0.3, 0.34, 0.2), 1)
+	var bg := _plate(Color(0.04, 0.05, 0.03, 0.9), Color(0.3, 0.34, 0.2), 1, 12, 8, want_compact)
 	t.set_stylebox("background", "ProgressBar", bg)
 	var fill := StyleBoxFlat.new()
 	fill.bg_color = GREEN
@@ -68,21 +73,24 @@ static func build() -> Theme:
 	_theme = t
 	return t
 
-static func _plate(bg: Color, border: Color, border_w: int) -> StyleBoxFlat:
+## Force theme rebuild after orientation / compact changes.
+static func invalidate() -> void:
+	_theme = null
+
+static func _plate(bg: Color, border: Color, border_w: int, pad_x: int = 18, pad_y: int = 10, compact: bool = false) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = bg
-	s.set_corner_radius_all(9)
+	s.set_corner_radius_all(12 if compact else 9)
 	s.set_border_width_all(border_w)
 	s.border_color = border
-	s.content_margin_left = 18
-	s.content_margin_right = 18
-	s.content_margin_top = 10
-	s.content_margin_bottom = 10
-	# Slight skew = military stencil plate feel.
-	s.skew = Vector2(-0.05, 0.0)
-	# Soft drop shadow lifts plates off the 3D scene like stickers.
-	s.shadow_color = Color(0, 0, 0, 0.35)
-	s.shadow_size = 6
+	s.content_margin_left = pad_x
+	s.content_margin_right = pad_x
+	s.content_margin_top = pad_y
+	s.content_margin_bottom = pad_y
+	# Skew reads as "cheap sticker" on phone widths — keep it desktop-only.
+	s.skew = Vector2.ZERO if compact else Vector2(-0.05, 0.0)
+	s.shadow_color = Color(0, 0, 0, 0.4 if compact else 0.35)
+	s.shadow_size = 8 if compact else 6
 	s.shadow_offset = Vector2(0, 3)
 	return s
 

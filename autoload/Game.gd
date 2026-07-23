@@ -131,6 +131,10 @@ func is_portrait() -> bool:
 	var win := DisplayServer.window_get_size()
 	return win.y > win.x
 
+## Campaign missions (not skirmish / royale arenas).
+func in_campaign() -> bool:
+	return is_playing() and not mode_respawns
+
 func capture_mouse_on_web() -> void:
 	# Browsers only allow pointer lock after a user click — skip auto-capture on web.
 	if not OS.has_feature("web"):
