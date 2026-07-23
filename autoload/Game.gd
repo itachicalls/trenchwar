@@ -104,15 +104,32 @@ func capture_mouse() -> void:
 ## ---- touch / mobile ------------------------------------------------------
 ## Look input accumulated by TouchControls each frame; Player consumes it.
 var touch_look := Vector2.ZERO
+## Gyro / auto-fire prefs (persisted). COD-style helpers for small screens.
+var gyro_enabled: bool = true
+var auto_fire_enabled: bool = true
+## True while the rotate-to-landscape gate is up — Player ignores combat input.
+var needs_landscape: bool = false
 
 func is_touch() -> bool:
 	return DisplayServer.is_touchscreen_available()
+
+## Menus / type scale: true on phones OR any narrow window (portrait browser
+## tab, lab screenshots). Touch controls still require is_touch().
+func compact_ui() -> bool:
+	if is_touch():
+		return true
+	var win := DisplayServer.window_get_size()
+	return mini(win.x, win.y) > 0 and mini(win.x, win.y) < 700
 
 ## Cheap-GPU profile: web builds and touch devices run the Compatibility
 ## renderer where every dynamic light re-renders nearby geometry. Decorative
 ## lights should check this and skip themselves.
 func low_gfx() -> bool:
 	return OS.has_feature("web") or is_touch()
+
+func is_portrait() -> bool:
+	var win := DisplayServer.window_get_size()
+	return win.y > win.x
 
 func capture_mouse_on_web() -> void:
 	# Browsers only allow pointer lock after a user click — skip auto-capture on web.
@@ -142,6 +159,8 @@ func save_progress() -> void:
 	cf.set_value("save", "unlocked_skins", unlocked_skins)
 	cf.set_value("save", "selected_weapon", selected_weapon)
 	cf.set_value("save", "owned_weapons", owned_weapons)
+	cf.set_value("save", "gyro_enabled", gyro_enabled)
+	cf.set_value("save", "auto_fire_enabled", auto_fire_enabled)
 	cf.save(SAVE_PATH)
 
 func _load_progress() -> void:
@@ -157,6 +176,8 @@ func _load_progress() -> void:
 	unlocked_skins = cf.get_value("save", "unlocked_skins", ["classic"])
 	selected_weapon = cf.get_value("save", "selected_weapon", "rifle")
 	owned_weapons = cf.get_value("save", "owned_weapons", ["rifle"])
+	gyro_enabled = bool(cf.get_value("save", "gyro_enabled", true))
+	auto_fire_enabled = bool(cf.get_value("save", "auto_fire_enabled", true))
 
 # -------------------------------------------------------------------------
 # Input map (registered in code so the project is self-documenting and the

@@ -1,35 +1,28 @@
 class_name TouchControls
 extends CanvasLayer
-## On-screen controls for phones and tablets. Created by Main only when a
-## touchscreen is present; hides itself outside of gameplay.
-##
-## Layout (thumb-reach ergonomics):
-##   left-bottom  — move joystick with a visible home base (recenters under
-##                  the thumb on touch; push to the rim to sprint)
-##   right side   — drag anywhere free to look (sensitivity is a fraction of
-##                  screen height, so it feels identical on every device)
-##   right-bottom — FIRE (large), JUMP, AIM toggle, RELOAD, SWAP
-##   center-right — INTERACT [E]
-##   bottom-center— squad orders 1/2/3
-## All buttons drive the same input actions the keyboard uses, so vehicles,
-## rescues and menus need zero special-casing.
+## COD-lite mobile HUD (landscape-first):
+##   left-bottom  — move joystick (rim = sprint)
+##   right HALF   — free look pad (bottom-right stays mostly empty)
+##   mid-right    — FIRE (raised so the look thumb has room)
+##   upper-right  — JUMP + AIM (claw-friendly, out of the look pad)
+##   left edge    — squad 1/2/3
+## Fire-finger drag still steers the camera (fixed-fire + look rotation).
 
-## Radians turned by dragging a full screen-height. ~172° — quick enough to
-## check your back in one thumb sweep without feeling twitchy.
-const LOOK_TURN := 3.0
+## Radians for a full screen-height drag.
+const LOOK_TURN := 3.2
 
 var _stick_finger := -1
-var _stick_home := Vector2.ZERO      # resting position of the base
-var _stick_origin := Vector2.ZERO    # where the current touch grabbed it
+var _stick_home := Vector2.ZERO
+var _stick_origin := Vector2.ZERO
 var _stick_vec := Vector2.ZERO
 var _stick_radius := 120.0
 var _look_finger := -1
 var _aim_on := false
 
-var _canvas: Control            # full-screen draw surface (joystick visuals)
-var _buttons: Array[Dictionary] = []   # {pos, radius, action, label, toggle, held}
+var _canvas: Control
+var _buttons: Array[Dictionary] = []
 var _last_vp := Vector2.ZERO
-var _safe_origin := Vector2.ZERO   # top-left of the notch-safe rect
+var _safe_origin := Vector2.ZERO
 
 func _ready() -> void:
 	layer = 55
@@ -39,8 +32,6 @@ func _ready() -> void:
 	_canvas.draw.connect(_draw_controls)
 	add_child(_canvas)
 	_layout()
-	# Haptics (no-op on devices without a vibrator, incl. desktop browsers):
-	# a firm buzz when hurt, a tick on kill confirms. Combat you can feel.
 	Events.player_damaged.connect(func(): Input.vibrate_handheld(60))
 	Events.hit_confirmed.connect(func(killed: bool):
 		if killed:
@@ -49,12 +40,7 @@ func _ready() -> void:
 func _layout() -> void:
 	var vp := _canvas.get_viewport_rect().size
 	_last_vp = vp
-	# Everything sized off the SHORT edge: consistent thumb size in both
-	# orientations and on tablets.
-	var u := minf(vp.x, vp.y) / 100.0   # 1u = 1% of short edge
-	# Notch/home-bar safe area: shrink the usable rect so no control hides
-	# under a camera cutout or the iOS swipe bar. (Window coords -> canvas
-	# coords share the same scale here since the canvas fills the window.)
+	var u := minf(vp.x, vp.y) / 100.0
 	var win := Vector2(DisplayServer.window_get_size())
 	if win.x > 0.0 and win.y > 0.0:
 		var safe := DisplayServer.get_display_safe_area()
@@ -64,38 +50,33 @@ func _layout() -> void:
 		var right := maxf(win.x - safe.end.x, 0.0) * to_canvas.x
 		var bottom := maxf(win.y - safe.end.y, 0.0) * to_canvas.y
 		vp = Vector2(vp.x - left - right, vp.y - top - bottom)
-		# Re-anchor: all positions below are relative to the safe rect.
 		_safe_origin = Vector2(left, top)
 	else:
 		_safe_origin = Vector2.ZERO
-	_stick_radius = 15.0 * u
-	_stick_home = _safe_origin + Vector2(19.0 * u, vp.y - 21.0 * u)
-	# Right-hand cluster fans in an arc around FIRE. Every pair of circles is
-	# spaced so their TAP zones (radius * 1.15) never intersect — the old
-	# layout let fire/jump/aim/swap hit areas overlap each other (and the
-	# squad row sat on the joystick in portrait): a jumbled mess.
+	_stick_radius = 14.0 * u
+	_stick_home = _safe_origin + Vector2(18.0 * u, vp.y - 20.0 * u)
+	# COD 2-thumb: FIRE sits mid-right (not bottom-right). Bottom-right is
+	# reserved as the look pad so the right thumb can swipe freely.
 	_buttons = [
-		{"id": "fire", "pos": Vector2(vp.x - 12.0 * u, vp.y - 14.0 * u), "radius": 9.0 * u,
+		{"id": "fire", "pos": Vector2(vp.x - 14.0 * u, vp.y - 38.0 * u), "radius": 8.5 * u,
 			"action": "fire", "label": "FIRE", "toggle": false, "held": false},
-		{"id": "jump", "pos": Vector2(vp.x - 31.0 * u, vp.y - 9.0 * u), "radius": 7.0 * u,
+		{"id": "jump", "pos": Vector2(vp.x - 14.0 * u, vp.y - 58.0 * u), "radius": 6.5 * u,
 			"action": "jump", "label": "JUMP", "toggle": false, "held": false},
-		{"id": "aim", "pos": Vector2(vp.x - 9.0 * u, vp.y - 33.0 * u), "radius": 6.0 * u,
+		{"id": "aim", "pos": Vector2(vp.x - 30.0 * u, vp.y - 52.0 * u), "radius": 5.8 * u,
 			"action": "aim", "label": "AIM", "toggle": true, "held": false},
-		{"id": "reload", "pos": Vector2(vp.x - 26.0 * u, vp.y - 26.0 * u), "radius": 5.5 * u,
+		{"id": "reload", "pos": Vector2(vp.x - 32.0 * u, vp.y - 34.0 * u), "radius": 5.0 * u,
 			"action": "reload", "label": "R", "toggle": false, "held": false},
-		{"id": "swap", "pos": Vector2(vp.x - 43.0 * u, vp.y - 19.0 * u), "radius": 5.5 * u,
+		{"id": "swap", "pos": Vector2(vp.x - 46.0 * u, vp.y - 44.0 * u), "radius": 5.0 * u,
 			"action": "swap_weapon", "label": "SWAP", "toggle": false, "held": false},
-		{"id": "interact", "pos": Vector2(vp.x - 9.0 * u, vp.y - 52.0 * u), "radius": 6.5 * u,
+		{"id": "interact", "pos": Vector2(vp.x - 14.0 * u, vp.y - 74.0 * u), "radius": 5.5 * u,
 			"action": "interact", "label": "E", "toggle": false, "held": false},
-		# Squad orders: vertical stack on the LEFT edge, above the joystick —
-		# clear of both thumbs and identical in portrait and landscape.
-		{"id": "cmd1", "pos": Vector2(8.0 * u, vp.y - 44.0 * u), "radius": 4.5 * u,
+		{"id": "cmd1", "pos": Vector2(8.0 * u, vp.y - 42.0 * u), "radius": 4.2 * u,
 			"action": "cmd_follow", "label": "1", "toggle": false, "held": false},
-		{"id": "cmd2", "pos": Vector2(8.0 * u, vp.y - 56.0 * u), "radius": 4.5 * u,
+		{"id": "cmd2", "pos": Vector2(8.0 * u, vp.y - 53.0 * u), "radius": 4.2 * u,
 			"action": "cmd_hold", "label": "2", "toggle": false, "held": false},
-		{"id": "cmd3", "pos": Vector2(8.0 * u, vp.y - 68.0 * u), "radius": 4.5 * u,
+		{"id": "cmd3", "pos": Vector2(8.0 * u, vp.y - 64.0 * u), "radius": 4.2 * u,
 			"action": "cmd_charge", "label": "3", "toggle": false, "held": false},
-		{"id": "pause", "pos": Vector2(vp.x - 8.0 * u, 8.0 * u), "radius": 5.0 * u,
+		{"id": "pause", "pos": Vector2(vp.x - 8.0 * u, 8.0 * u), "radius": 4.8 * u,
 			"action": "pause", "label": "II", "toggle": false, "held": false},
 	]
 	for b in _buttons:
@@ -103,17 +84,16 @@ func _layout() -> void:
 	_canvas.queue_redraw()
 
 func _process(_delta: float) -> void:
-	# Re-layout on any viewport/content-scale change (rotation, UI scaling).
 	if _canvas.get_viewport_rect().size != _last_vp:
 		_layout()
-	var playing := Game.state == Game.State.PLAYING and not get_tree().paused
+	var playing := Game.state == Game.State.PLAYING and not get_tree().paused \
+			and not Game.needs_landscape
 	if visible != playing:
 		visible = playing
 		if not playing:
 			_release_everything()
 	if not playing:
 		return
-	# Feed the joystick into the four move actions (get_vector reads strength).
 	if _stick_finger != -1:
 		Input.action_press("move_right", maxf(_stick_vec.x, 0.0))
 		Input.action_press("move_left", maxf(-_stick_vec.x, 0.0))
@@ -147,8 +127,6 @@ func _input(event: InputEvent) -> void:
 		_touch_drag(event.index, event.position, event.relative)
 
 func _touch_down(finger: int, pos: Vector2) -> void:
-	# Buttons win over everything. 1.15 = the spacing contract in _layout:
-	# bigger grab zones re-introduce the overlaps this layout was built to kill.
 	for b in _buttons:
 		if pos.distance_to(b.pos) <= b.radius * 1.15:
 			b.held = true
@@ -161,8 +139,6 @@ func _touch_down(finger: int, pos: Vector2) -> void:
 					Input.action_release(b.action)
 				b.held = _aim_on
 			elif b.id == "pause":
-				# Pause is handled in _unhandled_input, which raw action state
-				# never reaches — dispatch a real event through the tree.
 				var ev := InputEventAction.new()
 				ev.action = "pause"
 				ev.pressed = true
@@ -172,8 +148,9 @@ func _touch_down(finger: int, pos: Vector2) -> void:
 			_canvas.queue_redraw()
 			return
 	var vp := _canvas.get_viewport_rect().size
-	if pos.x < vp.x * 0.42 and _stick_finger == -1:
-		# Joystick: base recenters under the thumb wherever it lands.
+	# Left 40% owns the stick; everything else is look (incl. the empty
+	# bottom-right pad COD leaves free for camera flicks).
+	if pos.x < vp.x * 0.40 and _stick_finger == -1:
 		_stick_finger = finger
 		_stick_origin = pos
 		_stick_vec = Vector2.ZERO
@@ -201,27 +178,20 @@ func _touch_drag(finger: int, pos: Vector2, relative: Vector2) -> void:
 		var v := (pos - _stick_origin) / _stick_radius
 		_stick_vec = v.limit_length(1.0)
 		return
-	# The FIRE thumb also steers: dragging while holding fire tracks targets
-	# like every mobile shooter — without it you're a stationary turret.
 	var is_fire_finger := false
 	for b in _buttons:
 		if b.get("finger", -1) == finger:
 			if b.id != "fire":
-				return   # other buttons: taps only, no hidden look input
+				return
 			is_fire_finger = true
 			break
 	if finger == _look_finger or is_fire_finger:
 		var vp := _canvas.get_viewport_rect().size
-		# Ignore bogus giant deltas (browser touch quirks) instead of whipping
-		# the camera across the room.
 		if relative.length() > vp.y * 0.25:
 			return
 		Game.touch_look += relative * (LOOK_TURN / maxf(vp.y, 1.0))
 
-## Joystick + button rings drawn directly — crisp at any resolution, no
-## texture assets to ship or scale.
 func _draw_controls() -> void:
-	# Joystick base is ALWAYS visible so players know where to put a thumb.
 	var base := _stick_origin if _stick_finger != -1 else _stick_home
 	_canvas.draw_circle(base, _stick_radius, Color(0.05, 0.09, 0.04, 0.42))
 	_canvas.draw_arc(base, _stick_radius, 0, TAU, 48, Color(0.9, 1.0, 0.85, 0.55), 4.0, true)
@@ -233,6 +203,14 @@ func _draw_controls() -> void:
 		var hs := font.get_string_size(hint, HORIZONTAL_ALIGNMENT_CENTER, -1, int(_stick_radius * 0.28))
 		_canvas.draw_string(font, base + Vector2(-hs.x / 2.0, hs.y * 0.3), hint,
 			HORIZONTAL_ALIGNMENT_CENTER, -1, int(_stick_radius * 0.28), Color(1, 1, 1, 0.7))
+	# Soft look-pad hint in the empty bottom-right (COD's free swipe zone).
+	var full := _canvas.get_viewport_rect().size
+	var look_hint := Vector2(full.x - _stick_radius * 1.1, full.y - _stick_radius * 0.85)
+	var lh := "LOOK"
+	var ls := int(_stick_radius * 0.28)
+	var lsz := font.get_string_size(lh, HORIZONTAL_ALIGNMENT_CENTER, -1, ls)
+	_canvas.draw_string(font, look_hint + Vector2(-lsz.x / 2.0, 0), lh,
+		HORIZONTAL_ALIGNMENT_CENTER, -1, ls, Color(1, 1, 1, 0.28))
 	for b in _buttons:
 		_canvas.draw_circle(b.pos, b.radius, Color(0.05, 0.09, 0.04, 0.62 if b.held else 0.42))
 		_canvas.draw_arc(b.pos, b.radius, 0, TAU, 40,

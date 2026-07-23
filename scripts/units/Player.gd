@@ -233,7 +233,21 @@ func _consume_touch_look() -> void:
 	_pitch = clampf(_pitch - Game.touch_look.y, -1.2, 0.7)
 	Game.touch_look = Vector2.ZERO
 
+## Gyro fine-aim (COD-style). Touch does big turns; tilt does micro-adjust.
+const GYRO_SENS := 1.35
+func _consume_gyro(delta: float) -> void:
+	if not Game.is_touch() or not Game.gyro_enabled or Game.needs_landscape:
+		return
+	var g := Input.get_gyroscope()
+	if g.length_squared() < 0.0001:
+		return
+	# Landscape phone: device Y ≈ world yaw, device X ≈ pitch. Clamp wild spikes.
+	_yaw -= clampf(g.y, -4.0, 4.0) * GYRO_SENS * delta
+	_pitch = clampf(_pitch - clampf(g.x, -4.0, 4.0) * GYRO_SENS * delta, -1.2, 0.7)
+
 func _physics_process(delta: float) -> void:
+	if Game.needs_landscape:
+		return
 	if _dying or _celebrating:
 		# Cinematic moments (death keel-over, victory wave): gravity only, no
 		# input. Runs even in VICTORY state, so land softly if we were mid-jump.
@@ -248,6 +262,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_fold_node_yaw()
 	_consume_touch_look()
+	_consume_gyro(delta)
 	_update_camera(delta)
 	_update_movement(delta)
 	_update_aim_probe()
@@ -421,8 +436,14 @@ func _update_combat() -> void:
 	if OS.has_feature("web") and not Game.is_touch() \
 			and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
+	if Game.needs_landscape:
+		return
 	_aiming = Input.is_action_pressed("aim")
-	if Input.is_action_pressed("fire") if weapon.data.automatic else Input.is_action_just_pressed("fire"):
+	# Auto-fire: when the reticle is on a hostile, keep shooting (mobile
+	# default — frees the right thumb to look while the gun tracks).
+	var auto := Game.is_touch() and Game.auto_fire_enabled and aim_at_enemy
+	var want_fire := Input.is_action_pressed("fire") or auto
+	if want_fire if (weapon.data.automatic or auto) else Input.is_action_just_pressed("fire"):
 		if weapon.try_fire(_aim_direction()):
 			# Snap the body square to the shot the instant it fires — no
 			# lerp lag frame where the soldier fires across his shoulder.
