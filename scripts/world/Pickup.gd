@@ -337,22 +337,22 @@ func _build_presentation(color: Color) -> void:
 		orb.name = "Orb%d" % i
 		add_child(orb)
 
-	# Pulsing light (driven in _process). PERF: desktop-only — with coins
-	# everywhere this was 20+ dynamic lights per room, and the Compatibility
-	# renderer (web/mobile) pays full price per light. The additive beam,
-	# disc and ring already sell the glow without it.
-	if not Game.low_gfx():
-		_light = OmniLight3D.new()
-		_light.light_color = color
-		_light.light_energy = 0.9
-		_light.omni_range = 3.5
-		add_child(_light)
+	# Pulsing light — kept for the loot candy look; slept when far from player.
+	_light = OmniLight3D.new()
+	_light.light_color = color
+	_light.light_energy = 0.9
+	_light.omni_range = 3.5
+	add_child(_light)
 
 func _process(delta: float) -> void:
 	_t += delta
 	_spin.rotate_y(delta * (5.0 if kind == Kind.COIN else 2.2))
 	if _light != null:
-		_light.light_energy = 0.7 + sin(_t * 3.0) * 0.35
+		var near := Game.player != null and is_instance_valid(Game.player) \
+			and global_position.distance_squared_to(Game.player.global_position) < 625.0
+		_light.visible = near
+		if near:
+			_light.light_energy = 0.7 + sin(_t * 3.0) * 0.35
 	var ring := get_node_or_null("GlowRing")
 	if ring != null:
 		ring.rotation.y += delta * 0.8

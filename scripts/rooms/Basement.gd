@@ -34,21 +34,20 @@ func _build_lighting() -> void:
 	# Bare bulb over the washer landing.
 	var bulb := SpotLight3D.new()
 	bulb.light_color = Color(1.0, 0.9, 0.65)
-	bulb.light_energy = 2.8 if not Game.low_gfx() else 2.0
+	bulb.light_energy = 2.8
 	bulb.spot_range = 45.0
 	bulb.spot_angle = 38.0
 	bulb.position = Vector3(-30, 24, -20)
 	bulb.rotation_degrees = Vector3(-88, 0, 0)
 	add_child(bulb)
 	register_flicker(bulb, bulb.light_energy, 1.4, 0.12)
-	if not Game.low_gfx():
-		var red := OmniLight3D.new()
-		red.light_color = Color(1.0, 0.35, 0.2)
-		red.light_energy = 1.5
-		red.omni_range = 28.0
-		red.position = Vector3(36, 8, 28)
-		add_child(red)
-		register_flicker(red, 1.5, 2.4, 0.18)
+	var red := OmniLight3D.new()
+	red.light_color = Color(1.0, 0.35, 0.2)
+	red.light_energy = 1.5
+	red.omni_range = 28.0
+	red.position = Vector3(36, 8, 28)
+	add_child(red)
+	register_flicker(red, 1.5, 2.4, 0.18)
 
 func _build_shell_and_stairs() -> void:
 	var concrete := ToyMaterials.concrete(Color(0.42, 0.44, 0.48))
@@ -100,7 +99,7 @@ func _build_clutter() -> void:
 	add_prop("gascan", Vector3(36, 0, 14), -15, 1.5)
 	Landmine.spawn(self, Vector3(6, 0, -20))
 	Landmine.spawn(self, Vector3(-6, 0, 16))
-	add_dust_motes(Vector3(0, 6, 0), Vector3(40, 5, 35), 40 if not Game.low_gfx() else 18, Color(0.7, 0.72, 0.78))
+	add_dust_motes(Vector3(0, 6, 0), Vector3(40, 5, 35), 40, Color(0.7, 0.72, 0.78))
 
 func _spawn_units() -> void:
 	var chrome: FactionData = load("res://data/factions/chrome_legion.tres")
@@ -122,8 +121,6 @@ func _spawn_units() -> void:
 		{"route": [Vector3(-30, 1, -24), Vector3(-20, 1, -30)], "mix": ["roomba_drone", "commando"]},
 		{"route": [Vector3(20, 1, -30)], "mix": ["tunnel_heavy", "grenadier"]},
 	]
-	if Game.low_gfx():
-		patrols = patrols.slice(0, 3)
 	for patrol in patrols:
 		var route: Array = patrol.route
 		for i in mini(2, patrol.mix.size()):
@@ -179,7 +176,7 @@ func _send_counterattack() -> void:
 	Events.notify.emit("WARNING: Tunnel heavies pouring from the container aisle!")
 	var chrome: FactionData = load("res://data/factions/chrome_legion.tres")
 	var mix := ["tunnel_heavy", "roomba_drone", "tunnel_heavy", "roomba_drone"]
-	for i in (2 if Game.low_gfx() else 4):
+	for i in 4:
 		var enemy := EnemySoldier.new()
 		enemy.faction = chrome
 		enemy.variant = mix[i]

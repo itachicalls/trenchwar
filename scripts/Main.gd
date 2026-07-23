@@ -111,24 +111,19 @@ func _ready() -> void:
 	# MSAA and 4K shadow atlases are brutal. Halving both is invisible at toy
 	# scale and roughly doubles the frame rate on integrated GPUs.
 	if OS.has_feature("web"):
-		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
-		get_viewport().positional_shadow_atlas_size = 1024
-		RenderingServer.directional_shadow_atlas_set_size(1024, true)
-		# Soft toy art hides the upscale; lower scale = big GPU win in Chrome.
-		get_viewport().scaling_3d_scale = 0.72 if Game.is_touch() else 0.8
-	if Game.is_touch():
-		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
-		get_viewport().positional_shadow_atlas_size = 512
-		RenderingServer.directional_shadow_atlas_set_size(512, true)
-		get_viewport().scaling_3d_scale = 0.68
-		# On-screen controls + landscape gate (touch devices only).
-		add_child(preload("res://scripts/ui/TouchControls.gd").new())
-		add_child(preload("res://scripts/ui/RotatePrompt.gd").new())
-	elif not OS.has_feature("web"):
-		# Desktop native: keep quality, but don't blow the shadow budget.
 		get_viewport().msaa_3d = Viewport.MSAA_2X
 		get_viewport().positional_shadow_atlas_size = 2048
 		RenderingServer.directional_shadow_atlas_set_size(2048, true)
+		# Mild internal downscale — keeps the look, frees GPU on browsers.
+		get_viewport().scaling_3d_scale = 0.85
+	if Game.is_touch():
+		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+		get_viewport().positional_shadow_atlas_size = 1024
+		RenderingServer.directional_shadow_atlas_set_size(1024, true)
+		get_viewport().scaling_3d_scale = 0.75
+		# On-screen controls + landscape gate (touch devices only).
+		add_child(preload("res://scripts/ui/TouchControls.gd").new())
+		add_child(preload("res://scripts/ui/RotatePrompt.gd").new())
 	# Compact type scale for touch OR any phone-sized window (incl. labs).
 	_apply_mobile_ui_scale()
 	get_tree().root.size_changed.connect(_apply_mobile_ui_scale)

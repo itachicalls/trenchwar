@@ -160,9 +160,12 @@ func _physics_process(delta: float) -> void:
 		_settle_on_surface()
 		return
 	apply_gravity(delta)
+	# Far squads think less often — same fight when you're near them, cheaper map.
+	var near_player := Game.player != null and is_instance_valid(Game.player) \
+		and global_position.distance_squared_to(Game.player.global_position) < 1600.0
 	_think_timer -= delta
 	if _think_timer <= 0.0:
-		_think_timer = 0.25
+		_think_timer = 0.25 if near_player or state == AiState.COMBAT else 0.55
 		_think()
 	match state:
 		AiState.PATROL:
@@ -173,7 +176,8 @@ func _physics_process(delta: float) -> void:
 			_do_combat(delta)
 	move_and_slide()
 	_detect_stuck(delta)
-	animate_waddle(delta, Vector2(velocity.x, velocity.z).length() > 0.5)
+	if near_player or state != AiState.PATROL:
+		animate_waddle(delta, Vector2(velocity.x, velocity.z).length() > 0.5)
 
 ## Wanting to move but going nowhere = wedged against something. First try a
 ## HOP (soldiers vault low clutter like real toys), then snap to the navmesh

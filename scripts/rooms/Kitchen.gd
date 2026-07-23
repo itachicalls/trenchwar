@@ -49,29 +49,28 @@ func _build_lighting() -> void:
 	moon.rotation_degrees = Vector3(-62, 0, 0)
 	add_child(moon)
 
-	if not Game.low_gfx():
-		# Decorative omnis are expensive on Compatibility / phones.
-		var fridge_glow := OmniLight3D.new()
-		fridge_glow.light_color = Color(0.6, 0.85, 1.0)
-		fridge_glow.light_energy = 1.9
-		fridge_glow.omni_range = 34.0
-		fridge_glow.position = Vector3(52, 12, -34)
-		add_child(fridge_glow)
-		register_flicker(fridge_glow, 1.9, 0.7, 0.1)
-		var oven := OmniLight3D.new()
-		oven.light_color = Color(1.0, 0.7, 0.4)
-		oven.light_energy = 2.0
-		oven.omni_range = 28.0
-		oven.position = Vector3(-52, 8, 34)
-		add_child(oven)
-		register_flicker(oven, 2.0, 1.3, 0.07)
-		var depot := OmniLight3D.new()
-		depot.light_color = Color(0.4, 0.9, 1.0)
-		depot.light_energy = 1.7
-		depot.omni_range = 38.0
-		depot.position = Vector3(40, 10, 34)
-		add_child(depot)
-		register_flicker(depot, 1.7, 2.2, 0.16)
+	# Fridge / oven / depot accents — distance-culled by RoomBase flicker loop.
+	var fridge_glow := OmniLight3D.new()
+	fridge_glow.light_color = Color(0.6, 0.85, 1.0)
+	fridge_glow.light_energy = 1.9
+	fridge_glow.omni_range = 34.0
+	fridge_glow.position = Vector3(52, 12, -34)
+	add_child(fridge_glow)
+	register_flicker(fridge_glow, 1.9, 0.7, 0.1)
+	var oven := OmniLight3D.new()
+	oven.light_color = Color(1.0, 0.7, 0.4)
+	oven.light_energy = 2.0
+	oven.omni_range = 28.0
+	oven.position = Vector3(-52, 8, 34)
+	add_child(oven)
+	register_flicker(oven, 2.0, 1.3, 0.07)
+	var depot := OmniLight3D.new()
+	depot.light_color = Color(0.4, 0.9, 1.0)
+	depot.light_energy = 1.7
+	depot.omni_range = 38.0
+	depot.position = Vector3(40, 10, 34)
+	add_child(depot)
+	register_flicker(depot, 1.7, 2.2, 0.16)
 
 # =========================================================================
 #  ROOM SHELL — checkerboard tile floor reads instantly as "kitchen".
@@ -282,11 +281,8 @@ func _build_scattered_props() -> void:
 	Landmine.spawn(self, Vector3(48, 0, 40))
 
 	# Dust motes in the moon pool over the sink and across the tiles.
-	if not Game.low_gfx():
-		add_dust_motes(Vector3(-10, 30, -42), Vector3(20, 12, 12), 40, Color(0.75, 0.85, 1.0))
-		add_dust_motes(Vector3(0, 8, 10), Vector3(38, 7, 28), 32)
-	else:
-		add_dust_motes(Vector3(0, 8, 10), Vector3(30, 6, 22), 12)
+	add_dust_motes(Vector3(-10, 30, -42), Vector3(20, 12, 12), 40, Color(0.75, 0.85, 1.0))
+	add_dust_motes(Vector3(0, 8, 10), Vector3(38, 7, 28), 32)
 
 # =========================================================================
 #  UNITS — the biggest garrison yet.
@@ -319,8 +315,6 @@ func _spawn_units() -> void:
 		# Dining-table garrison — Y is a hint; settle snaps them onto the mesa.
 		{"route": [Vector3(-14, 23, -2), Vector3(8, 23, 6), Vector3(0, 23, -4)], "mix": ["grenadier", "scout"]},
 	]
-	if Game.low_gfx():
-		patrols = patrols.slice(0, 4)
 	for patrol in patrols:
 		var route: Array = patrol.route
 		for i in 2:

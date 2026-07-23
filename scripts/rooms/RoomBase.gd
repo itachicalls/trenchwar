@@ -23,15 +23,15 @@ static func make_night_environment(fog_color: Color, ambient: Color, ambient_ene
 	env.tonemap_exposure = 1.35
 	# Bloom is a full-screen post pass — phones skip it, emissive materials
 	# still read bright without it.
-	env.glow_enabled = not Game.low_gfx()
-	env.glow_intensity = 0.7
-	env.glow_bloom = 0.15
+	# Bloom stays on for the toy look; phones keep emissives even if glow is light.
+	env.glow_enabled = true
+	env.glow_intensity = 0.55 if Game.is_touch() else 0.7
+	env.glow_bloom = 0.12 if Game.is_touch() else 0.15
 	env.glow_hdr_threshold = 0.9
-	# SSAO: desktop Forward+ only. Web/Compatibility pays full price for nothing.
-	# IMPORTANT: at toy scale the default SSAO radius blacks out soldiers.
-	env.ssao_enabled = not Game.low_gfx()
-	env.ssao_intensity = 0.55
-	env.ssao_radius = 0.35
+	# SSAO is a Forward+ desktop effect — Compatibility/web gets nothing from it.
+	env.ssao_enabled = not OS.has_feature("web")
+	env.ssao_intensity = 0.7
+	env.ssao_radius = 0.4
 	env.ssao_light_affect = 0.0
 	env.ssao_ao_channel_affect = 0.0
 	env.fog_enabled = true
@@ -82,9 +82,20 @@ func _process(_delta: float) -> void:
 	if _flickers.is_empty():
 		return
 	var t := Time.get_ticks_msec() * 0.001
+	# Keep every light in the scene — just sleep ones far from the camera so
+	# the look is intact when you're there, without paying for the whole map.
+	var cam := get_viewport().get_camera_3d()
+	var cam_pos := cam.global_position if cam != null else Vector3.ZERO
 	for f in _flickers:
+		var light: Light3D = f.light
+		if not is_instance_valid(light):
+			continue
+		var near := cam == null or light.global_position.distance_squared_to(cam_pos) < 4200.0
+		light.visible = near
+		if not near:
+			continue
 		var wave: float = 0.6 * sin(t * f.speed + f.phase) + 0.4 * sin(t * f.speed * 2.7 + f.phase * 1.7)
-		(f.light as Light3D).light_energy = f.base * (1.0 + wave * f.depth)
+		light.light_energy = f.base * (1.0 + wave * f.depth)
 
 ## Position of the node in `group` nearest the player (Vector3.INF when none).
 func nearest_in_group(group: String, filter: Callable = Callable()) -> Vector3:
@@ -367,7 +378,7 @@ func add_capture_zone(pos: Vector3, objective_id: String = "capture",
 func add_dust_motes(center: Vector3, extents: Vector3, amount: int = 40, color: Color = Color(0.9, 0.85, 0.7)) -> void:
 	var motes := CPUParticles3D.new()
 	# Ambience is the first thing to thin out on weak GPUs.
-	motes.amount = amount / 2 if Game.low_gfx() else amount
+	motes.amount = amount
 	motes.lifetime = 7.0
 	motes.preprocess = 7.0
 	motes.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX

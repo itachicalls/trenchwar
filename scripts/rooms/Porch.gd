@@ -34,24 +34,22 @@ func _build_lighting() -> void:
 	# Warm porch bulb — the mission's namesake.
 	var porch := SpotLight3D.new()
 	porch.light_color = Color(1.0, 0.82, 0.5)
-	porch.light_energy = 3.4 if not Game.low_gfx() else 2.4
+	porch.light_energy = 3.4
 	porch.spot_range = 50.0
 	porch.spot_angle = 40.0
 	porch.position = Vector3(-48, 26, 38)
 	porch.rotation_degrees = Vector3(-55, -20, 0)
 	add_child(porch)
 	register_flicker(porch, porch.light_energy, 0.9, 0.06)
-	if not Game.low_gfx():
-		var yard := OmniLight3D.new()
-		yard.light_color = Color(0.45, 0.9, 1.0)
-		yard.light_energy = 1.6
-		yard.omni_range = 36.0
-		yard.position = Vector3(30, 10, -20)
-		add_child(yard)
-		register_flicker(yard, 1.6, 2.0, 0.12)
-	# Fireflies near the trees (capped on low gfx).
+	var yard := OmniLight3D.new()
+	yard.light_color = Color(0.45, 0.9, 1.0)
+	yard.light_energy = 1.6
+	yard.omni_range = 36.0
+	yard.position = Vector3(30, 10, -20)
+	add_child(yard)
+	register_flicker(yard, 1.6, 2.0, 0.12)
 	var flies := CPUParticles3D.new()
-	flies.amount = 12 if Game.low_gfx() else 24
+	flies.amount = 24
 	flies.lifetime = 7.0
 	flies.preprocess = 7.0
 	flies.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
@@ -130,7 +128,7 @@ func _build_clutter() -> void:
 	add_prop("cardboard_1", Vector3(-8, 0, 44), -25, 5.0)
 	Landmine.spawn(self, Vector3(16, 0, -14))
 	Landmine.spawn(self, Vector3(26, 0, -20))
-	add_dust_motes(Vector3(0, 4, 0), Vector3(50, 3, 40), 36 if not Game.low_gfx() else 16, Color(0.8, 0.85, 0.95))
+	add_dust_motes(Vector3(0, 4, 0), Vector3(50, 3, 40), 36, Color(0.8, 0.85, 0.95))
 
 func _spawn_units() -> void:
 	var chrome: FactionData = load("res://data/factions/chrome_legion.tres")
@@ -152,8 +150,6 @@ func _spawn_units() -> void:
 		{"route": [Vector3(48, 1, -32)], "mix": ["yard_sniper", "commando"]},
 		{"route": [Vector3(50, 1, 20), Vector3(40, 1, 8)], "mix": ["scout", "yard_sniper"]},
 	]
-	if Game.low_gfx():
-		patrols = patrols.slice(0, 3)
 	for patrol in patrols:
 		var route: Array = patrol.route
 		for i in mini(2, patrol.mix.size()):
@@ -213,7 +209,7 @@ func _send_counterattack() -> void:
 	Events.notify.emit("WARNING: Yard snipers falling back through the hedge!")
 	var chrome: FactionData = load("res://data/factions/chrome_legion.tres")
 	var mix := ["yard_sniper", "commando", "yard_sniper", "heavy"]
-	for i in (2 if Game.low_gfx() else 4):
+	for i in 4:
 		var enemy := EnemySoldier.new()
 		enemy.faction = chrome
 		enemy.variant = mix[i]

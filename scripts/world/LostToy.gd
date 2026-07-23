@@ -7,6 +7,7 @@ static var total_in_level: int = 0
 static var found_in_level: int = 0
 
 @export var toy_name: String = "Lost Bear"
+var _light: OmniLight3D
 
 static func reset_level_counters() -> void:
 	total_in_level = 0
@@ -26,12 +27,17 @@ func _ready() -> void:
 	rig.scale = Vector3.ONE * 0.8
 	add_child(rig)
 	var gold := Color(1.0, 0.85, 0.45)
-	# Golden beacon beam + halo ring so hidden toys glint from across the room.
+	_light = OmniLight3D.new()
+	_light.light_color = gold
+	_light.light_energy = 0.7
+	_light.omni_range = 3.0
+	_light.position.y = 0.8
+	add_child(_light)
 	var beam := MeshInstance3D.new()
 	var cyl := CylinderMesh.new()
 	cyl.top_radius = 0.04
 	cyl.bottom_radius = 0.35
-	cyl.height = 5.0 if Game.low_gfx() else 7.0
+	cyl.height = 7.0
 	beam.mesh = cyl
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(gold, 0.09)
@@ -43,44 +49,37 @@ func _ready() -> void:
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	beam.material_override = mat
-	beam.position.y = cyl.height * 0.5
+	beam.position.y = 3.5
 	add_child(beam)
 	var ring := MeshInstance3D.new()
 	var torus := TorusMesh.new()
-	torus.inner_radius = 0.55
-	torus.outer_radius = 0.65
-	torus.rings = 16 if Game.low_gfx() else 20
-	torus.ring_segments = 4
+	torus.inner_radius = 0.6
+	torus.outer_radius = 0.72
+	torus.rings = 20
+	torus.ring_segments = 5
 	ring.mesh = torus
 	ring.material_override = ToyMaterials.glow(gold, 1.3)
-	ring.scale.y = 0.2
+	ring.scale.y = 0.25
 	ring.position.y = 0.02
 	add_child(ring)
-	if not Game.low_gfx():
-		var light := OmniLight3D.new()
-		light.light_color = gold
-		light.light_energy = 0.55
-		light.omni_range = 2.5
-		light.position.y = 0.8
-		add_child(light)
-		var sparks := CPUParticles3D.new()
-		sparks.amount = 5
-		sparks.lifetime = 1.5
-		sparks.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-		sparks.emission_sphere_radius = 0.5
-		sparks.direction = Vector3.UP
-		sparks.spread = 15.0
-		sparks.initial_velocity_min = 0.3
-		sparks.initial_velocity_max = 0.7
-		sparks.gravity = Vector3.ZERO
-		sparks.scale_amount_min = 0.02
-		sparks.scale_amount_max = 0.05
-		var sm := BoxMesh.new()
-		sm.size = Vector3.ONE
-		sm.material = ToyMaterials.glow(gold, 2.2)
-		sparks.mesh = sm
-		sparks.position.y = 0.5
-		add_child(sparks)
+	var sparks := CPUParticles3D.new()
+	sparks.amount = 8
+	sparks.lifetime = 1.5
+	sparks.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	sparks.emission_sphere_radius = 0.6
+	sparks.direction = Vector3.UP
+	sparks.spread = 15.0
+	sparks.initial_velocity_min = 0.3
+	sparks.initial_velocity_max = 0.8
+	sparks.gravity = Vector3.ZERO
+	sparks.scale_amount_min = 0.02
+	sparks.scale_amount_max = 0.06
+	var sm := BoxMesh.new()
+	sm.size = Vector3.ONE
+	sm.material = ToyMaterials.glow(gold, 2.2)
+	sparks.mesh = sm
+	sparks.position.y = 0.5
+	add_child(sparks)
 	body_entered.connect(_on_body_entered)
 	call_deferred("snap_to_surface")
 
@@ -92,6 +91,9 @@ func snap_to_surface() -> void:
 
 func _process(delta: float) -> void:
 	rotate_y(delta * 0.7)
+	# Sleep the point light when you're across the map — beacon mesh still shows.
+	if _light != null and Game.player != null and is_instance_valid(Game.player):
+		_light.visible = global_position.distance_squared_to(Game.player.global_position) < 900.0
 
 func _on_body_entered(body: Node3D) -> void:
 	if body != Game.player:
