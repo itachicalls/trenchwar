@@ -346,6 +346,9 @@ func _update_aim_probe() -> void:
 	if _wants_aim_lock():
 		if not aim_at_enemy:
 			_apply_aim_assist(from, dir)
+			# Soft lock still counts as "on enemy" for the hot crosshair.
+			if _assist_target != null and is_instance_valid(_assist_target):
+				aim_at_enemy = true
 	else:
 		_assist_target = null
 

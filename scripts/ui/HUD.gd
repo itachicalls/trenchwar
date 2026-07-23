@@ -1,7 +1,7 @@
 class_name HUD
 extends CanvasLayer
-## Toy-military heads-up display. Stenciled olive plates, Black Ops One headers,
-## dynamic crosshair, objective waypoint marker, damage/low-HP vignettes.
+## Toy-box HUD: bright sticker panels, playful labels, hot crosshair on enemies.
+## Designed to feel like plastic army-men packaging — not olive drab milsim.
 
 var root: Control
 var health_bar: ProgressBar
@@ -14,13 +14,13 @@ var parts_label: Label
 var coins_label: Label
 var squad_label: Label
 var powerup_box: HBoxContainer
-## id -> {pill: PanelContainer, label: Label, left: float}
 var _powerups := {}
 var objectives_box: VBoxContainer
 var mission_label: Label
 var crosshair: Control
 var cross_ticks: Array[ColorRect] = []
 var cross_dot: ColorRect
+var cross_ring: ColorRect
 var hit_marker: Label
 var notify_label: Label
 var notify_panel: PanelContainer
@@ -30,7 +30,8 @@ var waypoint: Control
 var waypoint_diamond: ColorRect
 var waypoint_label: Label
 var _notify_tween: Tween
-var _spread := 8.0
+var _spread := 10.0
+var _cross_hot := false
 
 func _ready() -> void:
 	layer = 5
@@ -63,122 +64,127 @@ func _ready() -> void:
 			_on_ammo(p.weapon.ammo, p.weapon.data.magazine_size)
 			weapon_label.text = p.weapon.data.display_name.to_upper()
 
-func _panel(anchor_preset: int) -> PanelContainer:
+func _sticker(fill: Color, border: Color, margin: float = 16.0) -> PanelContainer:
 	var p := PanelContainer.new()
-	p.set_anchors_and_offsets_preset(anchor_preset, Control.PRESET_MODE_MINSIZE, 18)
-	if anchor_preset in [Control.PRESET_BOTTOM_LEFT, Control.PRESET_BOTTOM_RIGHT]:
-		p.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	if anchor_preset in [Control.PRESET_TOP_RIGHT, Control.PRESET_BOTTOM_RIGHT]:
-		p.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	p.add_theme_stylebox_override("panel", UiTheme.hud_plate(fill, border))
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(p)
 	return p
 
-func _label(parent: Node, size: int, color: Color = UiTheme.CREAM, stencil: bool = false) -> Label:
+func _label(parent: Node, size: int, color: Color = Color.WHITE, bold: bool = false) -> Label:
 	var l := Label.new()
-	if stencil:
-		l.add_theme_font_override("font", UiTheme.title_font())
+	l.add_theme_font_override("font", UiTheme.title_font() if bold else UiTheme.body_font())
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
+	l.add_theme_color_override("font_outline_color", Color(0.08, 0.06, 0.12, 0.75))
+	l.add_theme_constant_override("outline_size", 3 if bold else 2)
 	parent.add_child(l)
 	return l
 
 func _build() -> void:
-	# Always-on cinematic vignette (subtle dark edges).
 	var cine := TextureRect.new()
-	cine.texture = UiTheme.radial_tex(Color(0, 0, 0, 0), Color(0, 0, 0, 0.32), 0.62)
+	cine.texture = UiTheme.radial_tex(Color(0, 0, 0, 0), Color(0, 0, 0, 0.22), 0.65)
 	cine.set_anchors_preset(Control.PRESET_FULL_RECT)
 	cine.stretch_mode = TextureRect.STRETCH_SCALE
 	cine.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(cine)
 
-	# Low-HP red vignette (alpha driven by missing health).
 	low_hp_vignette = TextureRect.new()
-	low_hp_vignette.texture = UiTheme.radial_tex(Color(0.7, 0, 0, 0), Color(0.65, 0.02, 0.02, 0.85), 0.45)
+	low_hp_vignette.texture = UiTheme.radial_tex(Color(0.7, 0, 0, 0), Color(0.85, 0.1, 0.2, 0.8), 0.45)
 	low_hp_vignette.set_anchors_preset(Control.PRESET_FULL_RECT)
 	low_hp_vignette.stretch_mode = TextureRect.STRETCH_SCALE
 	low_hp_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	low_hp_vignette.modulate.a = 0.0
 	root.add_child(low_hp_vignette)
 
-	# Damage flash.
 	damage_flash = ColorRect.new()
-	damage_flash.color = Color(0.8, 0.1, 0.1, 0.0)
+	damage_flash.color = Color(1.0, 0.2, 0.35, 0.0)
 	damage_flash.set_anchors_preset(Control.PRESET_FULL_RECT)
 	damage_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(damage_flash)
 
-	# Bottom-left: health + squad.
-	var bl := _panel(Control.PRESET_BOTTOM_LEFT)
-	var bl_box := VBoxContainer.new()
-	bl.add_child(bl_box)
-	health_label = _label(bl_box, 14, UiTheme.CREAM, true)
-	health_label.text = "INTEGRITY"
-	health_bar = ProgressBar.new()
-	health_bar.custom_minimum_size = Vector2(250, 18)
-	health_bar.show_percentage = false
-	bl_box.add_child(health_bar)
-	# Jetpack fuel gauge: thin amber strip under integrity.
-	fuel_label = _label(bl_box, 12, Color(1.0, 0.75, 0.3), true)
-	fuel_label.text = "JETPACK FUEL"
-	fuel_bar = ProgressBar.new()
-	fuel_bar.custom_minimum_size = Vector2(250, 10)
-	fuel_bar.show_percentage = false
-	fuel_bar.max_value = 100.0
-	fuel_bar.value = 100.0
-	var fuel_fill := StyleBoxFlat.new()
-	fuel_fill.bg_color = Color(1.0, 0.68, 0.2)
-	fuel_fill.set_corner_radius_all(3)
-	fuel_bar.add_theme_stylebox_override("fill", fuel_fill)
-	bl_box.add_child(fuel_bar)
-	squad_label = _label(bl_box, 14, Color(0.75, 0.85, 0.6))
-	squad_label.text = _squad_text(0, "follow")
-
-	# Bottom-right: weapon + ammo.
-	var br := _panel(Control.PRESET_BOTTOM_RIGHT)
-	var br_box := VBoxContainer.new()
-	br.add_child(br_box)
-	weapon_label = _label(br_box, 14, UiTheme.AMBER, true)
-	weapon_label.text = "PLASTIC RIFLE"
-	weapon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	ammo_label = _label(br_box, 34, UiTheme.CREAM, true)
-	ammo_label.text = "24 / 24"
-	ammo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-
-	# Top-left: mission + objectives, with a military accent stripe.
-	var tl := _panel(Control.PRESET_TOP_LEFT)
-	var tl_h := HBoxContainer.new()
-	tl_h.add_theme_constant_override("separation", 10)
-	tl.add_child(tl_h)
-	var stripe := ColorRect.new()
-	stripe.color = UiTheme.AMBER
-	stripe.custom_minimum_size = Vector2(3, 0)
-	tl_h.add_child(stripe)
+	# --- Mission card (top-left): sky-blue sticker ---
+	var tl := _sticker(Color(0.18, 0.42, 0.72, 0.88), UiTheme.SKY)
+	tl.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE, 14)
 	var tl_box := VBoxContainer.new()
-	tl_box.add_theme_constant_override("separation", 4)
-	tl_h.add_child(tl_box)
-	mission_label = _label(tl_box, 17, UiTheme.AMBER, true)
-	var divider := ColorRect.new()
-	divider.color = Color(UiTheme.AMBER, 0.35)
-	divider.custom_minimum_size = Vector2(0, 1)
-	tl_box.add_child(divider)
+	tl_box.add_theme_constant_override("separation", 5)
+	tl.add_child(tl_box)
+	mission_label = _label(tl_box, 18, UiTheme.GOLD, true)
 	objectives_box = VBoxContainer.new()
-	objectives_box.add_theme_constant_override("separation", 3)
+	objectives_box.add_theme_constant_override("separation", 4)
 	tl_box.add_child(objectives_box)
 
-	# Top-right: resources.
-	var tr := _panel(Control.PRESET_TOP_RIGHT)
+	# --- Loot chips (top-right) ---
+	var tr := _sticker(Color(0.55, 0.22, 0.55, 0.86), UiTheme.PURPLE)
+	tr.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 14)
+	tr.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	var tr_box := VBoxContainer.new()
 	tr_box.add_theme_constant_override("separation", 2)
 	tr.add_child(tr_box)
-	parts_label = _label(tr_box, 16, UiTheme.GREEN, true)
+	parts_label = _label(tr_box, 17, UiTheme.LIME, true)
 	parts_label.text = "PARTS  0"
 	parts_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	coins_label = _label(tr_box, 16, Color(1.0, 0.8, 0.25), true)
+	coins_label = _label(tr_box, 17, UiTheme.GOLD, true)
 	coins_label.text = "COINS  %d" % Game.coins
 	coins_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
-	# Bottom-center: active powerup pills with countdowns.
+	# --- Health / fuel (bottom-left): raised above the move stick ---
+	var bl := _sticker(Color(0.12, 0.48, 0.28, 0.88), UiTheme.LIME)
+	bl.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 14)
+	bl.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	bl.offset_bottom = -118 if Game.is_touch() else -14
+	var bl_box := VBoxContainer.new()
+	bl_box.add_theme_constant_override("separation", 4)
+	bl.add_child(bl_box)
+	health_label = _label(bl_box, 15, Color(0.95, 1.0, 0.9), true)
+	health_label.text = "HP"
+	health_bar = ProgressBar.new()
+	health_bar.custom_minimum_size = Vector2(230, 20)
+	health_bar.show_percentage = false
+	var hp_bg := StyleBoxFlat.new()
+	hp_bg.bg_color = Color(0.05, 0.12, 0.08, 0.85)
+	hp_bg.set_corner_radius_all(8)
+	var hp_fill := StyleBoxFlat.new()
+	hp_fill.bg_color = UiTheme.LIME
+	hp_fill.set_corner_radius_all(8)
+	health_bar.add_theme_stylebox_override("background", hp_bg)
+	health_bar.add_theme_stylebox_override("fill", hp_fill)
+	bl_box.add_child(health_bar)
+	fuel_label = _label(bl_box, 13, UiTheme.ORANGE, true)
+	fuel_label.text = "FUEL"
+	fuel_bar = ProgressBar.new()
+	fuel_bar.custom_minimum_size = Vector2(230, 12)
+	fuel_bar.show_percentage = false
+	fuel_bar.max_value = 100.0
+	fuel_bar.value = 100.0
+	var fuel_bg := StyleBoxFlat.new()
+	fuel_bg.bg_color = Color(0.15, 0.08, 0.02, 0.85)
+	fuel_bg.set_corner_radius_all(6)
+	var fuel_fill := StyleBoxFlat.new()
+	fuel_fill.bg_color = UiTheme.ORANGE
+	fuel_fill.set_corner_radius_all(6)
+	fuel_bar.add_theme_stylebox_override("background", fuel_bg)
+	fuel_bar.add_theme_stylebox_override("fill", fuel_fill)
+	bl_box.add_child(fuel_bar)
+	squad_label = _label(bl_box, 14, UiTheme.SKY, true)
+	squad_label.text = _squad_text(0, "follow")
+
+	# --- Ammo (bottom-right): candy coral sticker ---
+	var br := _sticker(Color(0.72, 0.28, 0.22, 0.88), UiTheme.ORANGE)
+	br.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 14)
+	br.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	br.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	br.offset_bottom = -14
+	var br_box := VBoxContainer.new()
+	br_box.add_theme_constant_override("separation", 2)
+	br.add_child(br_box)
+	weapon_label = _label(br_box, 14, UiTheme.GOLD, true)
+	weapon_label.text = "PLASTIC RIFLE"
+	weapon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	ammo_label = _label(br_box, 36, Color.WHITE, true)
+	ammo_label.text = "100 / 100"
+	ammo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+
 	powerup_box = HBoxContainer.new()
 	powerup_box.add_theme_constant_override("separation", 10)
 	powerup_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -188,59 +194,25 @@ func _build() -> void:
 	powerup_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(powerup_box)
 
-	# Objective waypoint marker (repositioned every frame).
 	waypoint = Control.new()
 	waypoint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(waypoint)
 	waypoint_diamond = ColorRect.new()
-	waypoint_diamond.color = UiTheme.AMBER
-	waypoint_diamond.size = Vector2(14, 14)
-	waypoint_diamond.position = Vector2(-7, -7)
+	waypoint_diamond.color = UiTheme.PINK
+	waypoint_diamond.size = Vector2(16, 16)
+	waypoint_diamond.position = Vector2(-8, -8)
 	waypoint_diamond.rotation = PI / 4
-	waypoint_diamond.pivot_offset = Vector2(7, 7)
+	waypoint_diamond.pivot_offset = Vector2(8, 8)
 	waypoint.add_child(waypoint_diamond)
-	waypoint_label = _label(waypoint, 13, UiTheme.AMBER, true)
-	waypoint_label.position = Vector2(-22, 10)
+	waypoint_label = _label(waypoint, 14, UiTheme.PINK, true)
+	waypoint_label.position = Vector2(-24, 12)
 	waypoint.visible = false
 
-	# Crosshair: center dot + four ticks that breathe with movement/fire.
-	crosshair = Control.new()
-	crosshair.set_anchors_preset(Control.PRESET_CENTER)
-	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(crosshair)
-	cross_dot = ColorRect.new()
-	cross_dot.color = UiTheme.CREAM
-	cross_dot.size = Vector2(4, 4)
-	cross_dot.position = Vector2(-2, -2)
-	crosshair.add_child(cross_dot)
-	for i in 4:
-		var tick := ColorRect.new()
-		tick.color = Color(UiTheme.CREAM, 0.85)
-		tick.size = Vector2(2, 8) if i < 2 else Vector2(8, 2)
-		crosshair.add_child(tick)
-		cross_ticks.append(tick)
-	hit_marker = _label(crosshair, 26, UiTheme.RED, true)
-	hit_marker.text = "X"
-	hit_marker.position = Vector2(-9, -19)
-	hit_marker.modulate.a = 0.0
+	_build_crosshair()
 
-	# Top-center notifications: a stenciled radio-message plate that slides in.
 	notify_panel = PanelContainer.new()
-	var toast := StyleBoxFlat.new()
-	toast.bg_color = Color(0.07, 0.09, 0.05, 0.88)
-	toast.border_color = Color(UiTheme.AMBER, 0.9)
-	toast.set_border_width_all(0)
-	toast.border_width_left = 3
-	toast.border_width_right = 3
-	toast.corner_radius_top_left = 3
-	toast.corner_radius_top_right = 3
-	toast.corner_radius_bottom_left = 3
-	toast.corner_radius_bottom_right = 3
-	toast.content_margin_left = 22.0
-	toast.content_margin_right = 22.0
-	toast.content_margin_top = 9.0
-	toast.content_margin_bottom = 9.0
-	notify_panel.add_theme_stylebox_override("panel", toast)
+	notify_panel.add_theme_stylebox_override("panel",
+		UiTheme.hud_plate(Color(0.95, 0.55, 0.15, 0.92), UiTheme.GOLD, 14))
 	notify_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	notify_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	notify_panel.position.y = 64
@@ -248,13 +220,36 @@ func _build() -> void:
 	notify_panel.modulate.a = 0.0
 	root.add_child(notify_panel)
 	var notify_box := VBoxContainer.new()
-	notify_box.add_theme_constant_override("separation", 1)
 	notify_panel.add_child(notify_box)
-	var radio_tag := _label(notify_box, 10, Color(UiTheme.AMBER, 0.8), true)
-	radio_tag.text = "- FIELD RADIO -"
-	radio_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	notify_label = _label(notify_box, 22, Color(0.98, 0.92, 0.6), true)
+	notify_label = _label(notify_box, 20, Color(0.12, 0.08, 0.05), true)
 	notify_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+func _build_crosshair() -> void:
+	crosshair = Control.new()
+	crosshair.set_anchors_preset(Control.PRESET_CENTER)
+	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(crosshair)
+	# Soft ring behind the reticle — pops on bright bathroom tile.
+	cross_ring = ColorRect.new()
+	cross_ring.color = Color(1, 1, 1, 0.22)
+	cross_ring.size = Vector2(22, 22)
+	cross_ring.position = Vector2(-11, -11)
+	crosshair.add_child(cross_ring)
+	cross_dot = ColorRect.new()
+	cross_dot.color = UiTheme.SKY
+	cross_dot.size = Vector2(6, 6)
+	cross_dot.position = Vector2(-3, -3)
+	crosshair.add_child(cross_dot)
+	for i in 4:
+		var tick := ColorRect.new()
+		tick.color = Color(UiTheme.SKY, 0.95)
+		tick.size = Vector2(3, 10) if i < 2 else Vector2(10, 3)
+		crosshair.add_child(tick)
+		cross_ticks.append(tick)
+	hit_marker = _label(crosshair, 28, UiTheme.PINK, true)
+	hit_marker.text = "X"
+	hit_marker.position = Vector2(-9, -20)
+	hit_marker.modulate.a = 0.0
 
 func _process(delta: float) -> void:
 	_update_crosshair(delta)
@@ -262,9 +257,9 @@ func _process(delta: float) -> void:
 	_update_powerups(delta)
 
 const POWERUP_STYLE := {
-	"rapid": ["RAPID FIRE", Color(1.0, 0.45, 0.1)],
-	"speed": ["SUGAR RUSH", Color(0.3, 0.9, 1.0)],
-	"shield": ["BUBBLE SHIELD", Color(0.45, 0.6, 1.0)],
+	"rapid": ["RAPID FIRE", Color(1.0, 0.55, 0.15)],
+	"speed": ["SUGAR RUSH", Color(0.35, 0.95, 1.0)],
+	"shield": ["BUBBLE SHIELD", Color(0.55, 0.7, 1.0)],
 }
 
 func _on_coins(amount: int) -> void:
@@ -279,16 +274,8 @@ func _on_powerup(id: String, duration: float) -> void:
 		return
 	var style: Array = POWERUP_STYLE.get(id, [id.to_upper(), UiTheme.CYAN])
 	var pill := PanelContainer.new()
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.06, 0.08, 0.05, 0.85)
-	sb.border_color = style[1]
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(10)
-	sb.content_margin_left = 14.0
-	sb.content_margin_right = 14.0
-	sb.content_margin_top = 5.0
-	sb.content_margin_bottom = 5.0
-	pill.add_theme_stylebox_override("panel", sb)
+	pill.add_theme_stylebox_override("panel",
+		UiTheme.hud_plate(Color(style[1].r, style[1].g, style[1].b, 0.35), style[1], 12))
 	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	powerup_box.add_child(pill)
 	var l := _label(pill, 15, style[1], true)
@@ -307,27 +294,36 @@ func _update_powerups(delta: float) -> void:
 
 func _update_crosshair(delta: float) -> void:
 	var p := Game.player
-	if p == null or not is_instance_valid(p):
+	if p == null or not is_instance_valid(p) or Game.needs_landscape:
 		crosshair.visible = false
 		return
 	crosshair.visible = true
-	var target_spread := 8.0
+	var target_spread := 10.0
 	if "velocity" in p:
 		target_spread += clampf(Vector2(p.velocity.x, p.velocity.z).length() * 0.9, 0.0, 12.0)
 	if Input.is_action_pressed("fire"):
 		target_spread += 6.0
 	if Input.is_action_pressed("aim"):
-		target_spread *= 0.5
+		target_spread *= 0.45
 	_spread = lerpf(_spread, target_spread, 10.0 * delta)
-	cross_ticks[0].position = Vector2(-1, -_spread - 8)
-	cross_ticks[1].position = Vector2(-1, _spread)
-	cross_ticks[2].position = Vector2(-_spread - 8, -1)
-	cross_ticks[3].position = Vector2(_spread, -1)
+	cross_ticks[0].position = Vector2(-1.5, -_spread - 10)
+	cross_ticks[1].position = Vector2(-1.5, _spread)
+	cross_ticks[2].position = Vector2(-_spread - 10, -1.5)
+	cross_ticks[3].position = Vector2(_spread, -1.5)
 	var hot: bool = "aim_at_enemy" in p and p.aim_at_enemy
-	var c := UiTheme.RED if hot else UiTheme.CREAM
+	# Sky when idle, hot orange-pink when locked on a Chrome.
+	var c := Color(1.0, 0.35, 0.2) if hot else UiTheme.SKY
+	if hot != _cross_hot:
+		_cross_hot = hot
+		# Pop when we acquire a target.
+		if hot:
+			cross_ring.scale = Vector2(1.35, 1.35)
+			var tw := create_tween()
+			tw.tween_property(cross_ring, "scale", Vector2.ONE, 0.15)
 	cross_dot.color = c
+	cross_ring.color = Color(c.r, c.g, c.b, 0.35 if hot else 0.18)
 	for tick in cross_ticks:
-		tick.color = Color(c, 0.85)
+		tick.color = Color(c, 0.95)
 
 func _update_waypoint() -> void:
 	var pos := Missions.active_marker()
@@ -348,25 +344,30 @@ func _update_waypoint() -> void:
 	waypoint_diamond.scale = Vector2.ONE * (1.0 + 0.15 * sin(Time.get_ticks_msec() * 0.006))
 
 func _squad_text(count: int, mode: String) -> String:
-	return "SQUAD  %d   |   %s" % [count, mode.to_upper()]
+	return "SQUAD  %d  ·  %s" % [count, mode.to_upper()]
 
 func _on_health(current: float, maximum: float) -> void:
 	health_bar.max_value = maximum
 	health_bar.value = current
-	health_label.text = "INTEGRITY  %d / %d" % [int(current), int(maximum)]
-	var missing := 1.0 - (current / maximum if maximum > 0 else 0.0)
+	health_label.text = "HP  %d / %d" % [int(current), int(maximum)]
+	var ratio := current / maximum if maximum > 0 else 1.0
+	var fill: StyleBoxFlat = health_bar.get_theme_stylebox("fill").duplicate()
+	fill.bg_color = UiTheme.LIME if ratio > 0.4 else (UiTheme.ORANGE if ratio > 0.2 else UiTheme.RED)
+	health_bar.add_theme_stylebox_override("fill", fill)
+	var missing := 1.0 - ratio
 	low_hp_vignette.modulate.a = clampf(missing - 0.25, 0.0, 0.75)
 
 func _on_fuel(fuel: float, max_fuel: float) -> void:
 	fuel_bar.max_value = max_fuel
 	fuel_bar.value = fuel
-	fuel_label.text = "JETPACK FUEL  %d%%" % int(round(fuel / max_fuel * 100.0))
+	fuel_label.text = "FUEL  %d%%" % int(round(fuel / max_fuel * 100.0))
 	fuel_label.add_theme_color_override("font_color",
-		UiTheme.RED if fuel <= 15.0 else Color(1.0, 0.75, 0.3))
+		UiTheme.RED if fuel <= 15.0 else UiTheme.ORANGE)
 
 func _on_ammo(ammo: int, magazine: int) -> void:
 	ammo_label.text = "%d / %d" % [ammo, magazine]
-	ammo_label.add_theme_color_override("font_color", UiTheme.RED if ammo == 0 else UiTheme.CREAM)
+	ammo_label.add_theme_color_override("font_color",
+		UiTheme.GOLD if ammo == 0 else Color.WHITE)
 
 func _on_squad(members: Array) -> void:
 	squad_label.text = _squad_text(members.size(), "follow")
@@ -379,21 +380,24 @@ func _on_objectives() -> void:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
 		objectives_box.add_child(row)
-		# Checkbox plate: amber outline, fills green when done.
 		var check := Panel.new()
-		check.custom_minimum_size = Vector2(13, 13)
+		check.custom_minimum_size = Vector2(16, 16)
 		check.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(0.35, 0.6, 0.3, 0.95) if o.done else Color(0, 0, 0, 0.25)
-		sb.border_color = Color(0.6, 0.8, 0.5) if o.done else Color(UiTheme.AMBER, 0.7)
-		sb.set_border_width_all(1)
-		sb.set_corner_radius_all(2)
+		sb.bg_color = UiTheme.LIME if o.done else Color(1, 1, 1, 0.12)
+		sb.border_color = Color.WHITE if o.done else UiTheme.GOLD
+		sb.set_border_width_all(2)
+		sb.set_corner_radius_all(5)
 		check.add_theme_stylebox_override("panel", sb)
 		row.add_child(check)
 		var l := Label.new()
-		l.add_theme_font_size_override("font_size", 14)
+		l.add_theme_font_override("font", UiTheme.body_font())
+		l.add_theme_font_size_override("font_size", 15)
 		l.text = o.label()
-		l.add_theme_color_override("font_color", Color(0.62, 0.72, 0.55) if o.done else UiTheme.CREAM)
+		l.add_theme_color_override("font_color",
+			Color(0.75, 0.95, 0.8, 0.75) if o.done else Color(0.95, 0.98, 1.0))
+		l.add_theme_color_override("font_outline_color", Color(0.05, 0.1, 0.2, 0.7))
+		l.add_theme_constant_override("outline_size", 2)
 		row.add_child(l)
 
 func _on_notify(text: String) -> void:
@@ -412,7 +416,7 @@ func _on_notify(text: String) -> void:
 	_notify_tween.tween_property(notify_panel, "modulate:a", 0.0, 0.7)
 
 func _on_hit_confirmed(killed: bool) -> void:
-	hit_marker.modulate = Color(1, 0.3, 0.2, 1.0) if killed else Color(1, 1, 1, 0.9)
+	hit_marker.modulate = Color(1, 0.25, 0.45, 1.0) if killed else Color(1, 0.9, 0.3, 0.95)
 	hit_marker.scale = Vector2(1.5, 1.5) if killed else Vector2.ONE
 	var t := create_tween().set_parallel(true)
 	t.tween_property(hit_marker, "modulate:a", 0.0, 0.3)

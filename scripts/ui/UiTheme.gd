@@ -14,6 +14,26 @@ const RED := Color(1.0, 0.42, 0.3)
 const CYAN := Color(0.5, 0.92, 1.0)
 const PURPLE := Color(0.78, 0.6, 1.0)
 const ORANGE := Color(1.0, 0.62, 0.28)
+const PINK := Color(1.0, 0.45, 0.72)
+const SKY := Color(0.45, 0.85, 1.0)
+const LIME := Color(0.55, 0.95, 0.35)
+const GOLD := Color(1.0, 0.85, 0.2)
+
+## Bright toy-box HUD plate (not the olive military menus).
+static func hud_plate(fill: Color, border: Color, radius: int = 16) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = fill
+	s.border_color = border
+	s.set_border_width_all(3)
+	s.set_corner_radius_all(radius)
+	s.content_margin_left = 14
+	s.content_margin_right = 14
+	s.content_margin_top = 10
+	s.content_margin_bottom = 10
+	s.shadow_color = Color(0, 0, 0, 0.28)
+	s.shadow_size = 6
+	s.shadow_offset = Vector2(0, 3)
+	return s
 
 static var _theme: Theme = null
 static var _title: FontFile = null
