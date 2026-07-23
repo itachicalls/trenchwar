@@ -260,8 +260,8 @@ func _build_scattered_props() -> void:
 	add_prop("barrier_single", Vector3(12, 0, -22), 30, 3.6)
 	add_prop("barrier_large", Vector3(26, 0, -20), -75, 5.2)
 	add_prop("pallet", Vector3(-10, 0, 34), 10, 3.4)
-	add_prop("barrel", Vector3(48, 0, -14), 0, 1.8)
-	add_prop("barrel", Vector3(46.4, 0, -11.8), 40, 1.8)
+	add_barrel(Vector3(48, 0, -14), 0, 1.8)
+	add_barrel(Vector3(46.4, 0, -11.8), 40, 1.8)
 	add_prop("cone", Vector3(-24, 0, -8), 0, 1.6)
 	add_prop("woodplanks", Vector3(14, 0, 38), 75, 4.0)
 	# Deep-detail pass: the Green Army has fortified every approach.
@@ -271,7 +271,7 @@ func _build_scattered_props() -> void:
 	add_prop("pipes", Vector3(52, 0, 24), 15, 4.4)
 	add_prop("sign", Vector3(-36, 0, 32), -30, 2.6)
 	add_prop("gastank", Vector3(48, 0, 30), 110, 2.8)
-	add_prop("barrel_spilled", Vector3(20, 0, 16), -85, 2.2)
+	add_barrel(Vector3(20, 0, 16), -85, 2.2, true)
 	add_prop("fence", Vector3(-14, 0, 6), 40, 5.0)
 	add_prop("metalfence", Vector3(34, 0, 12), -15, 5.0)
 	# Landmines ring the beachhead (visual dressing, toys play fair... mostly).
@@ -397,22 +397,20 @@ func _spawn_pickups_and_toys() -> void:
 func _start_mission() -> void:
 	Missions.start_mission("ACT 1 — LIGHTS OUT")
 	Missions.add_objective("rescue", "Rescue captured Green Army soldiers  [E]", 2)
-	Missions.add_objective("patrols", "Eliminate Chrome Legion patrols", 6)
+	Missions.add_objective("barrels", "Detonate Chrome fuel barrels", 3)
 	Missions.add_objective("pods", "Destroy the Chrome beachhead drop pods", 3)
 	Missions.marker_provider = func(id: String) -> Vector3:
 		match id:
 			"rescue":
 				return nearest_in_group("green_allies", func(n): return n is SquadMate and n.captive)
-			"patrols":
-				return nearest_in_group("enemies")
+			"barrels":
+				return nearest_in_group("explosive_barrels")
 			"pods":
 				return nearest_in_group("chrome_pods")
 		return Vector3.INF
 	Events.notify.emit("The lights are out. The Chrome Legion has landed. Move out, soldier.")
 
-func _on_unit_died(unit: Node) -> void:
-	if unit is EnemySoldier:
-		Missions.progress("patrols")
+func _on_unit_died(_unit: Node) -> void:
 	# Reinforcement system: losing the first pod triggers a Chrome counterattack.
 	if not _reinforcements_sent and Missions.objectives.size() > 2 and Missions.objectives[2].count_done >= 1:
 		_send_reinforcements()

@@ -257,8 +257,9 @@ func _build_scattered_props() -> void:
 	add_prop("structure_2", Vector3(58, 0, 10), -50, 8.0)
 	add_prop("crate", Vector3(-40, 0, 22), 30, 3.2)
 	add_prop("crate", Vector3(-36.8, 0, 25), -20, 2.6)
-	add_prop("barrel", Vector3(-10, 0, 52), 0, 1.8)
-	add_prop("barrel_spilled", Vector3(-6.6, 0, 54), 60, 2.2)
+	add_barrel(Vector3(-10, 0, 52), 0, 1.8)
+	add_barrel(Vector3(-6.6, 0, 54), 60, 2.2, true)
+	add_barrel(Vector3(-4, 0, 48), -25, 1.8)
 	add_prop("debris_pile", Vector3(-58, 0, 12), 45, 5.0)
 	add_prop("pallet", Vector3(14, 0, 34), 70, 3.4)
 	add_prop("pallet_broken", Vector3(-14, 0, -44), 115, 3.2)
@@ -359,22 +360,20 @@ func _spawn_pickups_and_toys() -> void:
 func _start_mission() -> void:
 	Missions.start_mission("ACT 2 — NO MAN'S LAWN")
 	Missions.add_objective("rescue", "Rescue the lawn expedition  [E]", 3)
-	Missions.add_objective("patrols", "Break the trench-line garrison", 13)
+	Missions.add_objective("barrels", "Torch the trench fuel dumps", 3)
 	Missions.add_objective("pods", "Destroy the Chrome field HQ", 5)
 	Missions.marker_provider = func(id: String) -> Vector3:
 		match id:
 			"rescue":
 				return nearest_in_group("green_allies", func(n): return n is SquadMate and n.captive)
-			"patrols":
-				return nearest_in_group("enemies")
+			"barrels":
+				return nearest_in_group("explosive_barrels")
 			"pods":
 				return nearest_in_group("chrome_pods")
 		return Vector3.INF
 	Events.notify.emit("Open sky. Full moon. The Legion dug in across the lawn. End this, soldier.")
 
-func _on_unit_died(unit: Node) -> void:
-	if unit is EnemySoldier:
-		Missions.progress("patrols")
+func _on_unit_died(_unit: Node) -> void:
 	if not _counterattack_sent and Missions.objectives.size() > 2 and Missions.objectives[2].count_done >= 2:
 		_send_counterattack()
 	if not _final_wave_sent and Missions.objectives.size() > 2 and Missions.objectives[2].count_done >= 4:

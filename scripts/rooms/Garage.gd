@@ -230,9 +230,9 @@ func _build_scattered_props() -> void:
 	add_prop("debris_pile", Vector3(12, 0, 12), 70, 5.0)
 	add_prop("pallet", Vector3(-8, 0, 38), 25, 3.4)
 	add_prop("pallet_broken", Vector3(30, 0, -44), 100, 3.2)
-	add_prop("barrel", Vector3(-32, 0, -6), 0, 1.8)
-	add_prop("barrel", Vector3(-29.6, 0, -3.8), 45, 1.8)
-	add_prop("barrel_spilled", Vector3(-27, 0, -8.4), -70, 2.2)
+	add_barrel(Vector3(-32, 0, -6), 0, 1.8)
+	add_barrel(Vector3(-29.6, 0, -3.8), 45, 1.8)
+	add_barrel(Vector3(-27, 0, -8.4), -70, 2.2, true)
 	add_prop("gastank", Vector3(-58, 0, -48), 30, 3.0)
 	add_prop("gascan", Vector3(-36, 0, -26), -15, 1.6)
 	add_prop("watertank", Vector3(68, 0, -14), -40, 6.0)
@@ -336,22 +336,25 @@ func _spawn_pickups_and_toys() -> void:
 func _start_mission() -> void:
 	Missions.start_mission("ACT 2 — MOTOR POOL")
 	Missions.add_objective("rescue", "Rescue the motor-pool crew  [E]", 3)
-	Missions.add_objective("patrols", "Break the Chrome garage garrison", 11)
+	Missions.add_objective("vehicle", "Commandeer an armored vehicle  [E]", 1)
 	Missions.add_objective("pods", "Destroy the Chrome armor depot", 4)
 	Missions.marker_provider = func(id: String) -> Vector3:
 		match id:
 			"rescue":
 				return nearest_in_group("green_allies", func(n): return n is SquadMate and n.captive)
-			"patrols":
-				return nearest_in_group("enemies")
+			"vehicle":
+				return nearest_in_group("vehicles")
 			"pods":
 				return nearest_in_group("chrome_pods")
 		return Vector3.INF
+	if not Events.vehicle_entered.is_connected(_on_vehicle_entered):
+		Events.vehicle_entered.connect(_on_vehicle_entered)
 	Events.notify.emit("Chrome armor is massing in the garage. Roll out, soldier — take a tank.")
 
-func _on_unit_died(unit: Node) -> void:
-	if unit is EnemySoldier:
-		Missions.progress("patrols")
+func _on_vehicle_entered(_vehicle: Node) -> void:
+	Missions.progress("vehicle")
+
+func _on_unit_died(_unit: Node) -> void:
 	if not _counterattack_sent and Missions.objectives.size() > 2 and Missions.objectives[2].count_done >= 2:
 		_send_counterattack()
 

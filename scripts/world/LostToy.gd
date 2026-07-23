@@ -14,6 +14,7 @@ static func reset_level_counters() -> void:
 
 func _ready() -> void:
 	total_in_level += 1
+	add_to_group("lost_toys")
 	collision_layer = 0
 	collision_mask = 0b0010
 	var shape := CollisionShape3D.new()
@@ -94,4 +95,5 @@ func _on_body_entered(body: Node3D) -> void:
 	Fx.ring_pulse(self, global_position, Color(1.0, 0.85, 0.45), 2.5, 0.6)
 	Sfx.play("objective", -4.0)
 	Game.plastic_parts += 10
+	Missions.progress("toys")
 	queue_free()

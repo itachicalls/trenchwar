@@ -98,7 +98,7 @@ func _build_trench_lines() -> void:
 		# Capture flag at the middle of each line.
 		_make_capture_zone(Vector3(6, 0, z), li)
 		# Trench clutter: barrels, crates, debris.
-		add_prop("barrel", Vector3(-30 + li * 8, 0, z + 3), randf() * 360.0, 2.6)
+		add_barrel(Vector3(-30 + li * 8, 0, z + 3), randf() * 360.0, 2.6)
 		add_prop("crate", Vector3(22 - li * 6, 0, z - 3), randf() * 360.0, 3.0)
 		add_prop("debris_pile", Vector3(-52 + li * 20, 0, z), randf() * 360.0, 6.0)
 	# Minefield strip between line 1 and 2, marked by a warning sign.
@@ -203,7 +203,7 @@ func _build_legion_rear() -> void:
 		var pod := DropPod.new()
 		add_child(pod)
 		pod.position = Vector3(x, 0, rear_z + 4)
-		add_prop("barrel_spilled", Vector3(x + 3.5, 0, rear_z + 7), randf() * 360.0, 2.8)
+		add_barrel(Vector3(x + 3.5, 0, rear_z + 7), randf() * 360.0, 2.8, true)
 
 # =========================================================================
 #  FLORA — tomato-plant jungle along the flanks (trees at toy scale).

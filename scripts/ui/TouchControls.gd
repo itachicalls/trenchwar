@@ -2,20 +2,26 @@ class_name TouchControls
 extends CanvasLayer
 ## COD-lite mobile HUD (landscape-first):
 ##   left-bottom  — move joystick (rim = sprint)
-##   right HALF   — free look pad (bottom-right stays mostly empty)
-##   mid-right    — FIRE (raised so the look thumb has room)
-##   upper-right  — JUMP + AIM (claw-friendly, out of the look pad)
+##   right-bottom — look joystick (camera)
+##   mid-right    — FIRE / JUMP / AIM cluster above the look stick
 ##   left edge    — squad 1/2/3
-## Fire-finger drag still steers the camera (fixed-fire + look rotation).
+## Fire-finger drag and free-look swipes still steer the camera.
 
 ## Radians for a full screen-height drag.
 const LOOK_TURN := 3.2
+## Full-deflection look-stick turn rate (rad/s).
+const LOOK_STICK_SPEED := 2.6
 
 var _stick_finger := -1
 var _stick_home := Vector2.ZERO
 var _stick_origin := Vector2.ZERO
 var _stick_vec := Vector2.ZERO
 var _stick_radius := 120.0
+var _lookstick_finger := -1
+var _lookstick_home := Vector2.ZERO
+var _lookstick_origin := Vector2.ZERO
+var _lookstick_vec := Vector2.ZERO
+var _lookstick_radius := 110.0
 var _look_finger := -1
 var _aim_on := false
 
@@ -54,21 +60,22 @@ func _layout() -> void:
 	else:
 		_safe_origin = Vector2.ZERO
 	_stick_radius = 14.0 * u
+	_lookstick_radius = 13.0 * u
 	_stick_home = _safe_origin + Vector2(18.0 * u, vp.y - 20.0 * u)
-	# COD 2-thumb: FIRE sits mid-right (not bottom-right). Bottom-right is
-	# reserved as the look pad so the right thumb can swipe freely.
+	_lookstick_home = _safe_origin + Vector2(vp.x - 18.0 * u, vp.y - 18.0 * u)
+	# FIRE cluster sits above the look stick so the right thumb has room.
 	_buttons = [
-		{"id": "fire", "pos": Vector2(vp.x - 14.0 * u, vp.y - 38.0 * u), "radius": 8.5 * u,
+		{"id": "fire", "pos": Vector2(vp.x - 14.0 * u, vp.y - 42.0 * u), "radius": 8.5 * u,
 			"action": "fire", "label": "FIRE", "toggle": false, "held": false},
-		{"id": "jump", "pos": Vector2(vp.x - 14.0 * u, vp.y - 58.0 * u), "radius": 6.5 * u,
+		{"id": "jump", "pos": Vector2(vp.x - 14.0 * u, vp.y - 62.0 * u), "radius": 6.5 * u,
 			"action": "jump", "label": "JUMP", "toggle": false, "held": false},
-		{"id": "aim", "pos": Vector2(vp.x - 30.0 * u, vp.y - 52.0 * u), "radius": 5.8 * u,
+		{"id": "aim", "pos": Vector2(vp.x - 30.0 * u, vp.y - 56.0 * u), "radius": 5.8 * u,
 			"action": "aim", "label": "AIM", "toggle": true, "held": false},
-		{"id": "reload", "pos": Vector2(vp.x - 32.0 * u, vp.y - 34.0 * u), "radius": 5.0 * u,
+		{"id": "reload", "pos": Vector2(vp.x - 32.0 * u, vp.y - 38.0 * u), "radius": 5.0 * u,
 			"action": "reload", "label": "R", "toggle": false, "held": false},
-		{"id": "swap", "pos": Vector2(vp.x - 46.0 * u, vp.y - 44.0 * u), "radius": 5.0 * u,
+		{"id": "swap", "pos": Vector2(vp.x - 46.0 * u, vp.y - 48.0 * u), "radius": 5.0 * u,
 			"action": "swap_weapon", "label": "SWAP", "toggle": false, "held": false},
-		{"id": "interact", "pos": Vector2(vp.x - 14.0 * u, vp.y - 74.0 * u), "radius": 5.5 * u,
+		{"id": "interact", "pos": Vector2(vp.x - 14.0 * u, vp.y - 78.0 * u), "radius": 5.5 * u,
 			"action": "interact", "label": "E", "toggle": false, "held": false},
 		{"id": "cmd1", "pos": Vector2(8.0 * u, vp.y - 42.0 * u), "radius": 4.2 * u,
 			"action": "cmd_follow", "label": "1", "toggle": false, "held": false},
@@ -83,7 +90,7 @@ func _layout() -> void:
 		b.pos += _safe_origin
 	_canvas.queue_redraw()
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if _canvas.get_viewport_rect().size != _last_vp:
 		_layout()
 	var playing := Game.state == Game.State.PLAYING and not get_tree().paused \
@@ -103,12 +110,16 @@ func _process(_delta: float) -> void:
 			Input.action_press("sprint")
 		else:
 			Input.action_release("sprint")
+	if _lookstick_finger != -1 and _lookstick_vec.length() > 0.08:
+		Game.touch_look += _lookstick_vec * LOOK_STICK_SPEED * delta
 	_canvas.queue_redraw()
 
 func _release_everything() -> void:
 	_stick_finger = -1
+	_lookstick_finger = -1
 	_look_finger = -1
 	_stick_vec = Vector2.ZERO
+	_lookstick_vec = Vector2.ZERO
 	for a in ["move_right", "move_left", "move_back", "move_forward", "sprint", "fire", "jump", "aim"]:
 		Input.action_release(a)
 	_aim_on = false
@@ -148,8 +159,13 @@ func _touch_down(finger: int, pos: Vector2) -> void:
 			_canvas.queue_redraw()
 			return
 	var vp := _canvas.get_viewport_rect().size
-	# Left 40% owns the stick; everything else is look (incl. the empty
-	# bottom-right pad COD leaves free for camera flicks).
+	# Right look stick (grab zone slightly larger than the drawn rim).
+	if _lookstick_finger == -1 and pos.distance_to(_lookstick_home) <= _lookstick_radius * 1.35:
+		_lookstick_finger = finger
+		_lookstick_origin = _lookstick_home
+		_lookstick_vec = Vector2.ZERO
+		return
+	# Left 40% owns the move stick.
 	if pos.x < vp.x * 0.40 and _stick_finger == -1:
 		_stick_finger = finger
 		_stick_origin = pos
@@ -169,6 +185,9 @@ func _touch_up(finger: int) -> void:
 		_stick_vec = Vector2.ZERO
 		for a in ["move_right", "move_left", "move_back", "move_forward", "sprint"]:
 			Input.action_release(a)
+	if finger == _lookstick_finger:
+		_lookstick_finger = -1
+		_lookstick_vec = Vector2.ZERO
 	if finger == _look_finger:
 		_look_finger = -1
 	_canvas.queue_redraw()
@@ -177,6 +196,10 @@ func _touch_drag(finger: int, pos: Vector2, relative: Vector2) -> void:
 	if finger == _stick_finger:
 		var v := (pos - _stick_origin) / _stick_radius
 		_stick_vec = v.limit_length(1.0)
+		return
+	if finger == _lookstick_finger:
+		var lv := (pos - _lookstick_origin) / _lookstick_radius
+		_lookstick_vec = lv.limit_length(1.0)
 		return
 	var is_fire_finger := false
 	for b in _buttons:
@@ -191,26 +214,23 @@ func _touch_drag(finger: int, pos: Vector2, relative: Vector2) -> void:
 			return
 		Game.touch_look += relative * (LOOK_TURN / maxf(vp.y, 1.0))
 
+func _draw_stick(home: Vector2, origin: Vector2, vec: Vector2, radius: float, held: bool, label: String) -> void:
+	var base := origin if held else home
+	_canvas.draw_circle(base, radius, Color(0.05, 0.09, 0.04, 0.42))
+	_canvas.draw_arc(base, radius, 0, TAU, 48, Color(0.9, 1.0, 0.85, 0.55), 4.0, true)
+	var knob := base + vec * radius * 0.75
+	_canvas.draw_circle(knob, radius * 0.42, Color(0.72, 0.9, 0.5, 0.85 if held else 0.55))
+	if not held:
+		var font := ThemeDB.fallback_font
+		var hs := font.get_string_size(label, HORIZONTAL_ALIGNMENT_CENTER, -1, int(radius * 0.28))
+		_canvas.draw_string(font, base + Vector2(-hs.x / 2.0, hs.y * 0.3), label,
+			HORIZONTAL_ALIGNMENT_CENTER, -1, int(radius * 0.28), Color(1, 1, 1, 0.7))
+
 func _draw_controls() -> void:
-	var base := _stick_origin if _stick_finger != -1 else _stick_home
-	_canvas.draw_circle(base, _stick_radius, Color(0.05, 0.09, 0.04, 0.42))
-	_canvas.draw_arc(base, _stick_radius, 0, TAU, 48, Color(0.9, 1.0, 0.85, 0.55), 4.0, true)
-	var knob := base + _stick_vec * _stick_radius * 0.75
-	_canvas.draw_circle(knob, _stick_radius * 0.42, Color(0.72, 0.9, 0.5, 0.85 if _stick_finger != -1 else 0.55))
+	_draw_stick(_stick_home, _stick_origin, _stick_vec, _stick_radius, _stick_finger != -1, "MOVE")
+	_draw_stick(_lookstick_home, _lookstick_origin, _lookstick_vec, _lookstick_radius,
+		_lookstick_finger != -1, "LOOK")
 	var font := ThemeDB.fallback_font
-	if _stick_finger == -1:
-		var hint := "MOVE"
-		var hs := font.get_string_size(hint, HORIZONTAL_ALIGNMENT_CENTER, -1, int(_stick_radius * 0.28))
-		_canvas.draw_string(font, base + Vector2(-hs.x / 2.0, hs.y * 0.3), hint,
-			HORIZONTAL_ALIGNMENT_CENTER, -1, int(_stick_radius * 0.28), Color(1, 1, 1, 0.7))
-	# Soft look-pad hint in the empty bottom-right (COD's free swipe zone).
-	var full := _canvas.get_viewport_rect().size
-	var look_hint := Vector2(full.x - _stick_radius * 1.1, full.y - _stick_radius * 0.85)
-	var lh := "LOOK"
-	var ls := int(_stick_radius * 0.28)
-	var lsz := font.get_string_size(lh, HORIZONTAL_ALIGNMENT_CENTER, -1, ls)
-	_canvas.draw_string(font, look_hint + Vector2(-lsz.x / 2.0, 0), lh,
-		HORIZONTAL_ALIGNMENT_CENTER, -1, ls, Color(1, 1, 1, 0.28))
 	for b in _buttons:
 		_canvas.draw_circle(b.pos, b.radius, Color(0.05, 0.09, 0.04, 0.62 if b.held else 0.42))
 		_canvas.draw_arc(b.pos, b.radius, 0, TAU, 40,

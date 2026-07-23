@@ -281,6 +281,16 @@ func add_prop(prop_name: String, pos: Vector3, yaw_deg: float = 0.0, target_size
 		rig.add_child(body)
 	return rig
 
+## Shootable fuel barrel (prop mesh). Spilled variants tip on their side.
+func add_barrel(pos: Vector3, yaw_deg: float = 0.0, target_size: float = 1.8, spilled: bool = false) -> ExplosiveBarrel:
+	var barrel := ExplosiveBarrel.new()
+	barrel.spilled = spilled
+	barrel.target_size = target_size
+	add_child(barrel)
+	barrel.position = pos
+	barrel.rotation_degrees.y = yaw_deg
+	return barrel
+
 ## Drifting ambient dust motes: cheap, huge atmosphere win in dark rooms.
 func add_dust_motes(center: Vector3, extents: Vector3, amount: int = 40, color: Color = Color(0.9, 0.85, 0.7)) -> void:
 	var motes := CPUParticles3D.new()

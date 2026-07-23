@@ -252,8 +252,8 @@ func _build_scattered_props() -> void:
 	add_prop("cardboard_1", Vector3(56, 0, 8), -25, 5.2)
 	add_prop("cardboard_2", Vector3(-56, 0, -32), 45, 4.4)
 	add_prop("container_small", Vector3(30, 0, -40), 10, 4.4)
-	add_prop("barrel", Vector3(-2, 0, 40), 0, 1.8)
-	add_prop("barrel", Vector3(0.6, 0, 42.2), 55, 1.8)
+	add_barrel(Vector3(-2, 0, 40), 0, 1.8)
+	add_barrel(Vector3(0.6, 0, 42.2), 55, 1.8)
 	add_prop("gascan", Vector3(24, 0, -6), -20, 1.6)
 	add_prop("pallet", Vector3(-24, 0, 8), 65, 3.4)
 	add_prop("woodplanks", Vector3(44, 0, -16), 130, 4.2)
@@ -266,7 +266,7 @@ func _build_scattered_props() -> void:
 	add_prop("pipes", Vector3(-6, 0, -30), 20, 4.6)
 	add_prop("trashcontainer", Vector3(-60, 0, 0), 90, 6.2)
 	add_prop("sign", Vector3(-26, 0, 40), -50, 2.6)
-	add_prop("barrel_spilled", Vector3(6, 0, 14), 30, 2.2)
+	add_barrel(Vector3(6, 0, 14), 30, 2.2, true)
 	add_prop("gastank", Vector3(58, 0, -34), -70, 2.8)
 	add_prop("metalfence", Vector3(-20, 0, -14), 35, 5.0)
 	add_prop("fence_long", Vector3(22, 0, 32), -8, 7.0)
@@ -361,22 +361,20 @@ func _spawn_pickups_and_toys() -> void:
 func _start_mission() -> void:
 	Missions.start_mission("ACT 1 — COUNTER STRIKE")
 	Missions.add_objective("rescue", "Rescue the scattered squad  [E]", 2)
-	Missions.add_objective("patrols", "Eliminate the Chrome kitchen garrison", 8)
+	Missions.add_objective("barrels", "Blow the spice-rack fuel caches", 3)
 	Missions.add_objective("pods", "Destroy the cereal-fort supply depot", 3)
 	Missions.marker_provider = func(id: String) -> Vector3:
 		match id:
 			"rescue":
 				return nearest_in_group("green_allies", func(n): return n is SquadMate and n.captive)
-			"patrols":
-				return nearest_in_group("enemies")
+			"barrels":
+				return nearest_in_group("explosive_barrels")
 			"pods":
 				return nearest_in_group("chrome_pods")
 		return Vector3.INF
 	Events.notify.emit("The Legion is raiding the pantry. Take back the kitchen, soldier.")
 
-func _on_unit_died(unit: Node) -> void:
-	if unit is EnemySoldier:
-		Missions.progress("patrols")
+func _on_unit_died(_unit: Node) -> void:
 	if not _counterattack_sent and Missions.objectives.size() > 2 and Missions.objectives[2].count_done >= 2:
 		_send_counterattack()
 

@@ -250,8 +250,8 @@ func _build_scattered_props() -> void:
 	add_prop("barrier_single", Vector3(-24, 0, 30), -60, 3.6)
 	add_prop("crate", Vector3(40, 0, 14), 25, 3.0)
 	add_prop("crate", Vector3(43, 0, 17), -30, 2.5)
-	add_prop("barrel", Vector3(-2, 0, -36), 0, 1.8)
-	add_prop("barrel_spilled", Vector3(2, 0, -38.6), 70, 2.2)
+	add_barrel(Vector3(-2, 0, -36), 0, 1.8)
+	add_barrel(Vector3(2, 0, -38.6), 70, 2.2, true)
 	add_prop("pipes", Vector3(-48, 0, 8), 30, 4.6)
 	add_prop("cardboard_1", Vector3(46, 0, -10), -35, 4.8)
 	add_prop("pallet", Vector3(14, 0, 14), 55, 3.2)
@@ -340,22 +340,20 @@ func _spawn_pickups_and_toys() -> void:
 func _start_mission() -> void:
 	Missions.start_mission("ACT 2 — TUB THUMPING")
 	Missions.add_objective("rescue", "Rescue the stranded squad  [E]", 2)
-	Missions.add_objective("patrols", "Sweep the Chrome tile patrols", 9)
+	Missions.add_objective("toys", "Recover the lost bath toys", 3)
 	Missions.add_objective("pods", "Destroy the under-sink listening post", 3)
 	Missions.marker_provider = func(id: String) -> Vector3:
 		match id:
 			"rescue":
 				return nearest_in_group("green_allies", func(n): return n is SquadMate and n.captive)
-			"patrols":
-				return nearest_in_group("enemies")
+			"toys":
+				return nearest_in_group("lost_toys")
 			"pods":
 				return nearest_in_group("chrome_pods")
 		return Vector3.INF
 	Events.notify.emit("Chrome ears under the sink. Scrub this bathroom clean, soldier.")
 
-func _on_unit_died(unit: Node) -> void:
-	if unit is EnemySoldier:
-		Missions.progress("patrols")
+func _on_unit_died(_unit: Node) -> void:
 	if not _counterattack_sent and Missions.objectives.size() > 2 and Missions.objectives[2].count_done >= 2:
 		_send_counterattack()
 
