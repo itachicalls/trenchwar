@@ -20,19 +20,19 @@ const LIME := Color(0.55, 0.95, 0.35)
 const GOLD := Color(1.0, 0.85, 0.2)
 
 ## Bright toy-box HUD plate (not the olive military menus).
-static func hud_plate(fill: Color, border: Color, radius: int = 16) -> StyleBoxFlat:
+static func hud_plate(fill: Color, border: Color, radius: int = 12, pad: int = 8) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = fill
 	s.border_color = border
-	s.set_border_width_all(3)
+	s.set_border_width_all(2)
 	s.set_corner_radius_all(radius)
-	s.content_margin_left = 14
-	s.content_margin_right = 14
-	s.content_margin_top = 10
-	s.content_margin_bottom = 10
-	s.shadow_color = Color(0, 0, 0, 0.28)
-	s.shadow_size = 6
-	s.shadow_offset = Vector2(0, 3)
+	s.content_margin_left = pad
+	s.content_margin_right = pad
+	s.content_margin_top = pad - 1
+	s.content_margin_bottom = pad - 1
+	s.shadow_color = Color(0, 0, 0, 0.25)
+	s.shadow_size = 4
+	s.shadow_offset = Vector2(0, 2)
 	return s
 
 static var _theme: Theme = null

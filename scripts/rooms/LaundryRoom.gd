@@ -208,7 +208,7 @@ func _spawn_units() -> void:
 		route.assign(patrol.route)
 		for i in 2:
 			_spawn_enemy(patrol.mix[i], route, route[i % route.size()] + Vector3(i * 2.0, 0, 0))
-	_spawn_enemy("sniper", [Vector3(ROOM_W / 2 - 8, 15.5, 10)], Vector3(ROOM_W / 2 - 8, 15.5, 10))
+	_spawn_enemy("sniper", [Vector3(ROOM_W / 2 - 8, 17, 10)], Vector3(ROOM_W / 2 - 8, 17.5, 10))
 	_spawn_enemy("juggernaut", [_machine_pos + Vector3(0, 1, 20)], _machine_pos + Vector3(0, 1, 20))
 
 func _spawn_enemy(variant_name: String, route: Array[Vector3], pos: Vector3, alerted: bool = false) -> void:

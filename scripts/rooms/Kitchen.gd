@@ -304,11 +304,10 @@ func _spawn_units() -> void:
 		{"route": [Vector3(22, 1, 28), Vector3(36, 1, 12), Vector3(48, 1, 28)], "mix": ["heavy", "trooper"]},
 		{"route": [Vector3(40, 1, -24), Vector3(56, 1, -8), Vector3(34, 1, -2)], "mix": ["trooper", "scout"]},
 		{"route": [Vector3(-36, 1, -34), Vector3(-14, 1, -40), Vector3(-28, 1, -22)], "mix": ["scout", "scout"]},
-		{"route": [Vector3(12, 26.5, -ROOM_D / 2 + 12), Vector3(-30, 26.5, -ROOM_D / 2 + 12)], "mix": ["sniper", "trooper"]},
+		{"route": [Vector3(12, 28, -ROOM_D / 2 + 12), Vector3(-30, 28, -ROOM_D / 2 + 12)], "mix": ["sniper", "trooper"]},
 		{"route": [Vector3(30, 1, 40), Vector3(44, 1, 44), Vector3(52, 1, 36)], "mix": ["heavy", "sniper"]},
-		# Dining-table garrison: jetpack territory — grenadier shells the floor
-		# from on high until someone flies up to deal with him.
-		{"route": [Vector3(-20, 21.5, -4), Vector3(6, 21.5, 8), Vector3(2, 21.5, -6)], "mix": ["grenadier", "scout"]},
+		# Dining-table garrison — Y is a hint; settle snaps them onto the mesa.
+		{"route": [Vector3(-14, 23, -2), Vector3(8, 23, 6), Vector3(0, 23, -4)], "mix": ["grenadier", "scout"]},
 	]
 	for patrol in patrols:
 		var route: Array = patrol.route
@@ -320,7 +319,7 @@ func _spawn_units() -> void:
 			typed.assign(route)
 			enemy.patrol_points = typed
 			add_child(enemy)
-			enemy.position = route[i % route.size()] + Vector3(i * 1.5, 0, 0)
+			enemy.position = route[i % route.size()] + Vector3((i - 0.5) * 2.2, 0.5, 0)
 
 	# The tank waits by the oven.
 	var tank := ToyTank.new()

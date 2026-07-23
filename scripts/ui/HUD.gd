@@ -64,9 +64,9 @@ func _ready() -> void:
 			_on_ammo(p.weapon.ammo, p.weapon.data.magazine_size)
 			weapon_label.text = p.weapon.data.display_name.to_upper()
 
-func _sticker(fill: Color, border: Color, margin: float = 16.0) -> PanelContainer:
+func _sticker(fill: Color, border: Color, pad: int = 8) -> PanelContainer:
 	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", UiTheme.hud_plate(fill, border))
+	p.add_theme_stylebox_override("panel", UiTheme.hud_plate(fill, border, 11, pad))
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(p)
 	return p
@@ -76,8 +76,8 @@ func _label(parent: Node, size: int, color: Color = Color.WHITE, bold: bool = fa
 	l.add_theme_font_override("font", UiTheme.title_font() if bold else UiTheme.body_font())
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
-	l.add_theme_color_override("font_outline_color", Color(0.08, 0.06, 0.12, 0.75))
-	l.add_theme_constant_override("outline_size", 3 if bold else 2)
+	l.add_theme_color_override("font_outline_color", Color(0.08, 0.06, 0.12, 0.7))
+	l.add_theme_constant_override("outline_size", 2 if bold else 1)
 	parent.add_child(l)
 	return l
 
@@ -104,84 +104,84 @@ func _build() -> void:
 	root.add_child(damage_flash)
 
 	# --- Mission card (top-left): sky-blue sticker ---
-	var tl := _sticker(Color(0.18, 0.42, 0.72, 0.88), UiTheme.SKY)
-	tl.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE, 14)
+	var tl := _sticker(Color(0.18, 0.42, 0.72, 0.86), UiTheme.SKY, 7)
+	tl.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE, 10)
 	var tl_box := VBoxContainer.new()
-	tl_box.add_theme_constant_override("separation", 5)
+	tl_box.add_theme_constant_override("separation", 3)
 	tl.add_child(tl_box)
-	mission_label = _label(tl_box, 18, UiTheme.GOLD, true)
+	mission_label = _label(tl_box, 14, UiTheme.GOLD, true)
 	objectives_box = VBoxContainer.new()
-	objectives_box.add_theme_constant_override("separation", 4)
+	objectives_box.add_theme_constant_override("separation", 2)
 	tl_box.add_child(objectives_box)
 
 	# --- Loot chips (top-right) ---
-	var tr := _sticker(Color(0.55, 0.22, 0.55, 0.86), UiTheme.PURPLE)
-	tr.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 14)
+	var tr := _sticker(Color(0.55, 0.22, 0.55, 0.86), UiTheme.PURPLE, 6)
+	tr.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 10)
 	tr.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	var tr_box := VBoxContainer.new()
-	tr_box.add_theme_constant_override("separation", 2)
+	tr_box.add_theme_constant_override("separation", 1)
 	tr.add_child(tr_box)
-	parts_label = _label(tr_box, 17, UiTheme.LIME, true)
+	parts_label = _label(tr_box, 13, UiTheme.LIME, true)
 	parts_label.text = "PARTS  0"
 	parts_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	coins_label = _label(tr_box, 17, UiTheme.GOLD, true)
+	coins_label = _label(tr_box, 13, UiTheme.GOLD, true)
 	coins_label.text = "COINS  %d" % Game.coins
 	coins_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
 	# --- Health / fuel (bottom-left): raised above the move stick ---
-	var bl := _sticker(Color(0.12, 0.48, 0.28, 0.88), UiTheme.LIME)
-	bl.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 14)
+	var bl := _sticker(Color(0.12, 0.48, 0.28, 0.86), UiTheme.LIME, 7)
+	bl.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 10)
 	bl.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	bl.offset_bottom = -118 if Game.is_touch() else -14
+	bl.offset_bottom = -110 if Game.is_touch() else -10
 	var bl_box := VBoxContainer.new()
-	bl_box.add_theme_constant_override("separation", 4)
+	bl_box.add_theme_constant_override("separation", 2)
 	bl.add_child(bl_box)
-	health_label = _label(bl_box, 15, Color(0.95, 1.0, 0.9), true)
+	health_label = _label(bl_box, 12, Color(0.95, 1.0, 0.9), true)
 	health_label.text = "HP"
 	health_bar = ProgressBar.new()
-	health_bar.custom_minimum_size = Vector2(230, 20)
+	health_bar.custom_minimum_size = Vector2(180, 14)
 	health_bar.show_percentage = false
 	var hp_bg := StyleBoxFlat.new()
 	hp_bg.bg_color = Color(0.05, 0.12, 0.08, 0.85)
-	hp_bg.set_corner_radius_all(8)
+	hp_bg.set_corner_radius_all(6)
 	var hp_fill := StyleBoxFlat.new()
 	hp_fill.bg_color = UiTheme.LIME
-	hp_fill.set_corner_radius_all(8)
+	hp_fill.set_corner_radius_all(6)
 	health_bar.add_theme_stylebox_override("background", hp_bg)
 	health_bar.add_theme_stylebox_override("fill", hp_fill)
 	bl_box.add_child(health_bar)
-	fuel_label = _label(bl_box, 13, UiTheme.ORANGE, true)
+	fuel_label = _label(bl_box, 11, UiTheme.ORANGE, true)
 	fuel_label.text = "FUEL"
 	fuel_bar = ProgressBar.new()
-	fuel_bar.custom_minimum_size = Vector2(230, 12)
+	fuel_bar.custom_minimum_size = Vector2(180, 9)
 	fuel_bar.show_percentage = false
 	fuel_bar.max_value = 100.0
 	fuel_bar.value = 100.0
 	var fuel_bg := StyleBoxFlat.new()
 	fuel_bg.bg_color = Color(0.15, 0.08, 0.02, 0.85)
-	fuel_bg.set_corner_radius_all(6)
+	fuel_bg.set_corner_radius_all(5)
 	var fuel_fill := StyleBoxFlat.new()
 	fuel_fill.bg_color = UiTheme.ORANGE
-	fuel_fill.set_corner_radius_all(6)
+	fuel_fill.set_corner_radius_all(5)
 	fuel_bar.add_theme_stylebox_override("background", fuel_bg)
 	fuel_bar.add_theme_stylebox_override("fill", fuel_fill)
 	bl_box.add_child(fuel_bar)
-	squad_label = _label(bl_box, 14, UiTheme.SKY, true)
+	squad_label = _label(bl_box, 11, UiTheme.SKY, true)
 	squad_label.text = _squad_text(0, "follow")
 
 	# --- Ammo (bottom-right): candy coral sticker ---
-	var br := _sticker(Color(0.72, 0.28, 0.22, 0.88), UiTheme.ORANGE)
-	br.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 14)
+	var br := _sticker(Color(0.72, 0.28, 0.22, 0.86), UiTheme.ORANGE, 7)
+	br.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 10)
 	br.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	br.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	br.offset_bottom = -14
+	br.offset_bottom = -10
 	var br_box := VBoxContainer.new()
-	br_box.add_theme_constant_override("separation", 2)
+	br_box.add_theme_constant_override("separation", 1)
 	br.add_child(br_box)
-	weapon_label = _label(br_box, 14, UiTheme.GOLD, true)
+	weapon_label = _label(br_box, 11, UiTheme.GOLD, true)
 	weapon_label.text = "PLASTIC RIFLE"
 	weapon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	ammo_label = _label(br_box, 36, Color.WHITE, true)
+	ammo_label = _label(br_box, 26, Color.WHITE, true)
 	ammo_label.text = "100 / 100"
 	ammo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
@@ -212,17 +212,19 @@ func _build() -> void:
 
 	notify_panel = PanelContainer.new()
 	notify_panel.add_theme_stylebox_override("panel",
-		UiTheme.hud_plate(Color(0.95, 0.55, 0.15, 0.92), UiTheme.GOLD, 14))
+		UiTheme.hud_plate(Color(0.95, 0.55, 0.15, 0.92), UiTheme.GOLD, 10, 6))
 	notify_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	notify_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	notify_panel.position.y = 64
+	notify_panel.position.y = 48
 	notify_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	notify_panel.modulate.a = 0.0
 	root.add_child(notify_panel)
 	var notify_box := VBoxContainer.new()
 	notify_panel.add_child(notify_box)
-	notify_label = _label(notify_box, 20, Color(0.12, 0.08, 0.05), true)
+	notify_label = _label(notify_box, 14, Color(0.12, 0.08, 0.05), true)
 	notify_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	notify_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	notify_label.custom_minimum_size.x = 280
 
 func _build_crosshair() -> void:
 	crosshair = Control.new()
@@ -278,7 +280,7 @@ func _on_powerup(id: String, duration: float) -> void:
 		UiTheme.hud_plate(Color(style[1].r, style[1].g, style[1].b, 0.35), style[1], 12))
 	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	powerup_box.add_child(pill)
-	var l := _label(pill, 15, style[1], true)
+	var l := _label(pill, 12, style[1], true)
 	_powerups[id] = {"pill": pill, "label": l, "left": duration, "name": style[0]}
 
 func _update_powerups(delta: float) -> void:
@@ -381,18 +383,18 @@ func _on_objectives() -> void:
 		row.add_theme_constant_override("separation", 8)
 		objectives_box.add_child(row)
 		var check := Panel.new()
-		check.custom_minimum_size = Vector2(16, 16)
+		check.custom_minimum_size = Vector2(12, 12)
 		check.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = UiTheme.LIME if o.done else Color(1, 1, 1, 0.12)
 		sb.border_color = Color.WHITE if o.done else UiTheme.GOLD
 		sb.set_border_width_all(2)
-		sb.set_corner_radius_all(5)
+		sb.set_corner_radius_all(4)
 		check.add_theme_stylebox_override("panel", sb)
 		row.add_child(check)
 		var l := Label.new()
 		l.add_theme_font_override("font", UiTheme.body_font())
-		l.add_theme_font_size_override("font_size", 15)
+		l.add_theme_font_size_override("font_size", 12)
 		l.text = o.label()
 		l.add_theme_color_override("font_color",
 			Color(0.75, 0.95, 0.8, 0.75) if o.done else Color(0.95, 0.98, 1.0))
@@ -405,15 +407,15 @@ func _on_notify(text: String) -> void:
 	if _notify_tween != null:
 		_notify_tween.kill()
 	notify_panel.reset_size()
-	notify_panel.position.y = 48
+	notify_panel.position.y = 36
 	notify_panel.modulate.a = 0.0
 	_notify_tween = create_tween()
 	_notify_tween.set_parallel(true)
-	_notify_tween.tween_property(notify_panel, "modulate:a", 1.0, 0.18)
-	_notify_tween.tween_property(notify_panel, "position:y", 64.0, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_notify_tween.tween_property(notify_panel, "modulate:a", 1.0, 0.15)
+	_notify_tween.tween_property(notify_panel, "position:y", 48.0, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_notify_tween.set_parallel(false)
-	_notify_tween.tween_interval(3.2)
-	_notify_tween.tween_property(notify_panel, "modulate:a", 0.0, 0.7)
+	_notify_tween.tween_interval(2.6)
+	_notify_tween.tween_property(notify_panel, "modulate:a", 0.0, 0.5)
 
 func _on_hit_confirmed(killed: bool) -> void:
 	hit_marker.modulate = Color(1, 0.25, 0.45, 1.0) if killed else Color(1, 0.9, 0.3, 0.95)

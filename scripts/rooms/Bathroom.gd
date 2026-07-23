@@ -289,13 +289,13 @@ func _spawn_units() -> void:
 		{"route": [Vector3(8, 1, -8), Vector3(-8, 1, 4), Vector3(12, 1, 10)], "mix": ["scout", "scout"]},
 		{"route": [Vector3(-16, 1, -22), Vector3(-36, 1, -12), Vector3(-20, 1, -34)], "mix": ["trooper", "heavy"]},
 		{"route": [Vector3(28, 1, -20), Vector3(40, 1, -6), Vector3(20, 1, -30)], "mix": ["trooper", "scout"]},
-		{"route": [Vector3(-20, 16, 8.5), Vector3(-44, 16, 8.5)], "mix": ["sniper", "trooper"]},   # tub rim
-		{"route": [Vector3(34, 17, -28)], "mix": ["sniper", "heavy"]},                             # toilet seat
+		{"route": [Vector3(-20, 18, 8.5), Vector3(-44, 18, 8.5)], "mix": ["sniper", "trooper"]},   # tub rim
+		{"route": [Vector3(34, 19, -28)], "mix": ["sniper", "heavy"]},                             # toilet seat
 		{"route": [Vector3(-6, 1, 30), Vector3(14, 1, 38), Vector3(28, 1, 30)], "mix": ["trooper", "trooper"]},
 	]
 	for patrol in patrols:
 		var route: Array = patrol.route
-		for i in 2:
+		for i in mini(2, route.size()):
 			var enemy := EnemySoldier.new()
 			enemy.faction = chrome
 			enemy.variant = patrol.mix[i]
@@ -303,7 +303,7 @@ func _spawn_units() -> void:
 			typed.assign(route)
 			enemy.patrol_points = typed
 			add_child(enemy)
-			enemy.position = route[i % route.size()] + Vector3(i * 1.5, 0, 0)
+			enemy.position = route[i % route.size()] + Vector3((i - 0.5) * 1.8, 0.5, 0)
 
 	# The tank idles on the bath mat.
 	var tank := ToyTank.new()

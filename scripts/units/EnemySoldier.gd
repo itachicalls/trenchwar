@@ -67,6 +67,8 @@ var _stuck_time := 0.0
 var _last_pos := Vector3.ZERO
 var _burst_left := 0
 var _burst_pause := 0.0
+## First physics frame: lift out of furniture if a spawn point was inside a deck.
+var _needs_settle := true
 
 func _body_params() -> Dictionary:
 	var cfg: Dictionary = VARIANTS[variant]
@@ -87,11 +89,55 @@ func _unit_ready() -> void:
 	# Stagger AI ticks so a platoon doesn't think on the same frame.
 	_think_timer = randf() * 0.3
 
+## Raycast down from above the spawn and plant feet on the hit surface.
+## Elevated patrols (coffee table / dining table) often hardcoded a Y that
+## later sat INSIDE a thicker deck collider — buried Chrome can't be shot.
+func _settle_on_surface() -> void:
+	if get_world_3d() == null:
+		return
+	var space := get_world_3d().direct_space_state
+	var origin := global_position
+	# Start well above so the ray never begins inside the deck volume.
+	var from := Vector3(origin.x, origin.y + 14.0, origin.z)
+	var to := Vector3(origin.x, origin.y - 40.0, origin.z)
+	var q := PhysicsRayQueryParameters3D.create(from, to)
+	q.collision_mask = 0b0001
+	q.exclude = [get_rid()]
+	var hit := space.intersect_ray(q)
+	if not hit.is_empty():
+		global_position = Vector3(origin.x, hit.position.y + 0.02, origin.z)
+	# If still overlapping world (edge cases / thick stacks), keep lifting.
+	for _i in 20:
+		var params := PhysicsShapeQueryParameters3D.new()
+		var sphere := SphereShape3D.new()
+		sphere.radius = 0.42
+		params.shape = sphere
+		params.transform = Transform3D(Basis(), global_position + Vector3.UP * 0.75)
+		params.collision_mask = 0b0001
+		params.exclude = [get_rid()]
+		if space.intersect_shape(params, 1).is_empty():
+			break
+		global_position.y += 0.45
+	# Snap patrol waypoints onto the same surface height so AI doesn't path
+	# into the deck mid-route.
+	for i in patrol_points.size():
+		var p: Vector3 = patrol_points[i]
+		var pq := PhysicsRayQueryParameters3D.create(
+			Vector3(p.x, p.y + 14.0, p.z), Vector3(p.x, p.y - 40.0, p.z))
+		pq.collision_mask = 0b0001
+		var ph := space.intersect_ray(pq)
+		if not ph.is_empty():
+			patrol_points[i] = Vector3(p.x, ph.position.y + 0.02, p.z)
+
 func _physics_process(delta: float) -> void:
 	if not Game.is_playing():
 		return
 	# Nav map syncs on the first physics frame; querying earlier spams errors.
 	if NavigationServer3D.map_get_iteration_id(get_world_3d().navigation_map) == 0:
+		return
+	if _needs_settle:
+		_needs_settle = false
+		_settle_on_surface()
 		return
 	apply_gravity(delta)
 	_think_timer -= delta

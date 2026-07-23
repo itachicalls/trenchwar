@@ -286,9 +286,8 @@ func _spawn_units() -> void:
 		{"route": [Vector3(15, 1, 38), Vector3(-18, 1, 40), Vector3(0, 1, 28)], "mix": ["heavy", "trooper"]},
 		{"route": [Vector3(-35, 1, -20), Vector3(-10, 1, -18), Vector3(-30, 1, -12)], "mix": ["trooper", "scout"]},
 		{"route": [Vector3(50, 1, 35), Vector3(58, 1, 12), Vector3(40, 1, 25)], "mix": ["heavy", "sniper"]},
-		# Coffee-table overwatch: snipers on the plateau own the rug until the
-		# player jets up (or takes the book stairs) to clear them.
-		{"route": [Vector3(-14, 16.2, 6), Vector3(14, 16.2, -6), Vector3(4, 16.2, 8)], "mix": ["sniper", "scout"]},
+		# Coffee-table overwatch — Y is a hint; EnemySoldier settles onto the deck.
+		{"route": [Vector3(-10, 18, 4), Vector3(10, 18, -4), Vector3(0, 18, 6)], "mix": ["sniper", "scout"]},
 	]
 	for patrol in patrols:
 		var route: Array = patrol.route
@@ -300,7 +299,8 @@ func _spawn_units() -> void:
 			typed.assign(route)
 			enemy.patrol_points = typed
 			add_child(enemy)
-			enemy.position = route[i % route.size()] + Vector3(i * 1.5, 0, 0)
+			# Spread sideways on the deck, not into the table legs / lips.
+			enemy.position = route[i % route.size()] + Vector3((i - 0.5) * 2.2, 0.5, 0)
 
 	# Vehicles: tank near spawn, paper plane on the coffee table coaster.
 	var tank := ToyTank.new()
