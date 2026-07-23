@@ -17,7 +17,7 @@ var _camera: Camera3D
 var _yaw := 0.0
 var _pitch := -0.35
 var _prompt: Label3D
-var _engine_timer := 0.0
+var _engine_on := false
 var _aim_point := Vector3.ZERO
 
 func _ready() -> void:
@@ -191,11 +191,18 @@ func _drive(delta: float) -> void:
 	var flat := Vector2(to_aim.x, to_aim.z).length()
 	barrel.rotation.x = clampf(atan2(to_aim.y, maxf(flat, 0.01)), -0.25, 0.6)
 
-	if absf(throttle) > 0.1:
-		_engine_timer -= delta
-		if _engine_timer <= 0.0:
-			_engine_timer = 0.35
-			Sfx.play_at("engine", global_position, -10.0)
+	# One looping rumble while throttle is in — the old 5s one-shot spam
+	# kept roaring long after the tank stopped.
+	var want_engine := absf(throttle) > 0.1
+	if want_engine and not _engine_on:
+		Sfx.start_loop("engine", -14.0, 0.92)
+		_engine_on = true
+	elif not want_engine and _engine_on:
+		Sfx.stop_loop("engine", 0.08)
+		_engine_on = false
+	elif _engine_on:
+		var rev := clampf(absf(throttle), 0.0, 1.0)
+		Sfx.set_loop("engine", lerpf(-16.0, -12.0, rev), lerpf(0.88, 1.05, rev))
 
 	if Input.is_action_just_pressed("fire"):
 		var dir := (_aim_point - cannon.muzzle.global_position).normalized()
@@ -231,6 +238,7 @@ func _fire_feedback(dir: Vector3) -> void:
 	slam.tween_property(_camera, "v_offset", 0.0, 0.35).set_trans(Tween.TRANS_ELASTIC)
 
 func _dismount() -> void:
+	_stop_engine()
 	var exit_pos := global_position + global_transform.basis.x * 2.5 + Vector3.UP * 0.5
 	var p := driver
 	driver = null
@@ -238,6 +246,11 @@ func _dismount() -> void:
 	Events.weapon_changed.emit(p.weapon.data.display_name)
 	Events.ammo_changed.emit(p.weapon.ammo, p.weapon.data.magazine_size)
 	Events.player_health_changed.emit(p.health.current, p.health.max_health)
+
+func _stop_engine() -> void:
+	if _engine_on:
+		Sfx.stop_loop("engine")
+		_engine_on = false
 
 func take_damage(amount: float, _attacker: Node = null) -> void:
 	health.damage(amount * 0.5)   # toy armor
@@ -250,6 +263,7 @@ func is_dead() -> bool:
 	return health.dead
 
 func _on_destroyed(_attacker: Node) -> void:
+	_stop_engine()
 	if driver != null:
 		_dismount()
 	Fx.explosion(self, global_position + Vector3.UP, 4.0)

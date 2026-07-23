@@ -158,23 +158,22 @@ func _update_jetpack(delta: float) -> void:
 		if f.emitting != _jet_burning:
 			f.emitting = _jet_burning
 
-## Seamless thruster loop (Kenney thruster_fire) — ignite one-shot on start,
-## continuous roar while burning. The old 0.22s engine restart spam is gone.
+## Seamless thruster loop while burning. No 5s "ignite" one-shot — that kept
+## roaring after the player already let go of jump.
 func _update_jet_sfx(_delta: float) -> void:
 	if _jet_burning and not _jet_was_burning:
-		Sfx.play("jet_ignite", -10.0, 0.06)
-		Sfx.start_loop("jet_loop", -9.0, 1.05)
-		Sfx.start_loop("jet_hum", -16.0, 0.85)
+		Sfx.start_loop("jet_loop", -14.0, 1.02)
+		Sfx.start_loop("jet_hum", -22.0, 0.88)
 	elif not _jet_burning and _jet_was_burning:
-		Sfx.stop_loop("jet_loop")
-		Sfx.stop_loop("jet_hum")
+		Sfx.stop_loop("jet_loop", 0.08)
+		Sfx.stop_loop("jet_hum", 0.06)
 	if _jet_burning:
 		# Climb harder → hotter pitch; easing off softens the roar.
 		var climb := clampf((velocity.y + 2.0) / (JET_LIFT + 2.0), 0.0, 1.0)
-		var pitch := lerpf(0.92, 1.18, climb)
-		var vol := lerpf(-12.0, -6.5, climb)
+		var pitch := lerpf(0.9, 1.12, climb)
+		var vol := lerpf(-16.0, -11.0, climb)
 		Sfx.set_loop("jet_loop", vol, pitch)
-		Sfx.set_loop("jet_hum", lerpf(-18.0, -14.0, climb), lerpf(0.8, 0.95, climb))
+		Sfx.set_loop("jet_hum", lerpf(-24.0, -18.0, climb), lerpf(0.82, 0.96, climb))
 	_jet_was_burning = _jet_burning
 
 ## When the jet hits a furniture SIDE, hop the capsule onto the ledge instead
@@ -519,7 +518,7 @@ func _update_movement(delta: float) -> void:
 	velocity.z = move_toward(velocity.z, wish.z * speed, accel * delta)
 	if Input.is_action_just_pressed("jump") and is_on_floor():
 		velocity.y = 13.0   # ~3.5 u apex: book-stair steps are jumpable
-		Sfx.play("step", -9.0, 0.12)
+		Sfx.play("step", -18.0, 0.08)
 		Fx.dust(self, global_position)
 	move_and_slide()
 	# Plant hard on decks — kill residual downward speed so we don't sink
@@ -531,7 +530,7 @@ func _update_movement(delta: float) -> void:
 	if is_on_floor() and not _was_on_floor:
 		_land_dip = 1.0
 		Fx.dust(self, global_position, true)
-		Sfx.play("step", -7.0, 0.1)
+		Sfx.play("step", -16.0, 0.06)
 	_was_on_floor = is_on_floor()
 
 	var moving := Vector2(velocity.x, velocity.z).length() > 0.5
@@ -544,9 +543,9 @@ func _update_movement(delta: float) -> void:
 		_step_timer -= delta
 		if _step_timer <= 0.0:
 			var sprinting := Input.is_action_pressed("sprint")
-			# Snappier cadence so plastic boots actually read as walking.
-			_step_timer = (0.26 if sprinting else 0.34) / (1.15 if sprinting else 1.0)
-			Sfx.play("step", -8.0 if sprinting else -11.0, 0.14)
+			# Soft carpet taps, slower cadence — background, not a metronome.
+			_step_timer = 0.38 if sprinting else 0.52
+			Sfx.play("step", -15.0 if sprinting else -18.5, 0.1)
 			if sprinting:
 				Fx.dust(self, global_position)
 
@@ -705,6 +704,7 @@ func _on_died(_attacker: Node) -> void:
 	_jet_was_burning = false
 	Sfx.stop_loop("jet_loop")
 	Sfx.stop_loop("jet_hum")
+	Sfx.stop_loop("engine")
 	collision_layer = 0
 	velocity = Vector3.ZERO
 	Sfx.play("death")

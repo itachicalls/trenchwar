@@ -17,6 +17,7 @@ var _pool3d: Array[AudioStreamPlayer3D] = []
 var _pool3d_i := 0
 ## Continuous loops keyed by name (jet_loop, jet_hum, engine…).
 var _loops: Dictionary = {}
+var _loop_fades: Dictionary = {}
 
 func _ready() -> void:
 	for name in NAMES:
@@ -86,6 +87,7 @@ func play_at(name: String, position: Vector3, volume_db: float = 0.0) -> void:
 
 ## Start/keep a seamless loop. Safe to call every frame while active.
 func start_loop(name: String, volume_db: float = 0.0, pitch: float = 1.0) -> void:
+	_cancel_loop_fade(name)
 	var p := _ensure_loop(name)
 	if p == null:
 		return
@@ -95,16 +97,42 @@ func start_loop(name: String, volume_db: float = 0.0, pitch: float = 1.0) -> voi
 		p.play()
 
 func set_loop(name: String, volume_db: float, pitch: float = 1.0) -> void:
+	if _loop_fades.has(name):
+		return   # don't fight a fade-out
 	var p: AudioStreamPlayer = _loops.get(name)
 	if p == null:
 		return
 	p.volume_db = volume_db
 	p.pitch_scale = pitch
 
-func stop_loop(name: String) -> void:
+## Cut a loop immediately. Optional tiny fade (keep ≤0.1s — longer sounds
+## like a stuck thruster after the player already let go).
+func stop_loop(name: String, fade_sec: float = 0.0) -> void:
+	_cancel_loop_fade(name)
 	var p: AudioStreamPlayer = _loops.get(name)
-	if p != null and p.playing:
+	if p == null or not p.playing:
+		return
+	if fade_sec <= 0.001:
 		p.stop()
+		return
+	var from_db := p.volume_db
+	var tw := create_tween()
+	_loop_fades[name] = tw
+	tw.tween_property(p, "volume_db", -48.0, fade_sec)
+	tw.tween_callback(func():
+		_loop_fades.erase(name)
+		if is_instance_valid(p):
+			p.stop()
+			p.volume_db = from_db
+	)
+
+func _cancel_loop_fade(name: String) -> void:
+	if not _loop_fades.has(name):
+		return
+	var tw: Tween = _loop_fades[name]
+	if tw != null:
+		tw.kill()
+	_loop_fades.erase(name)
 
 func is_loop_playing(name: String) -> bool:
 	var p: AudioStreamPlayer = _loops.get(name)
