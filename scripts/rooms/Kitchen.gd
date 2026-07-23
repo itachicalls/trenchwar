@@ -49,32 +49,29 @@ func _build_lighting() -> void:
 	moon.rotation_degrees = Vector3(-62, 0, 0)
 	add_child(moon)
 
-	# The fridge hums with cold light, breathing slowly.
-	var fridge_glow := OmniLight3D.new()
-	fridge_glow.light_color = Color(0.6, 0.85, 1.0)
-	fridge_glow.light_energy = 1.9
-	fridge_glow.omni_range = 34.0
-	fridge_glow.position = Vector3(52, 12, -34)
-	add_child(fridge_glow)
-	register_flicker(fridge_glow, 1.9, 0.7, 0.1)
-
-	# Warm oven clock: the only cozy light, near the player spawn.
-	var oven := OmniLight3D.new()
-	oven.light_color = Color(1.0, 0.7, 0.4)
-	oven.light_energy = 2.0
-	oven.omni_range = 28.0
-	oven.position = Vector3(-52, 8, 34)
-	add_child(oven)
-	register_flicker(oven, 2.0, 1.3, 0.07)
-
-	# Cold Chrome depot glow over the cereal fort.
-	var depot := OmniLight3D.new()
-	depot.light_color = Color(0.4, 0.9, 1.0)
-	depot.light_energy = 1.7
-	depot.omni_range = 38.0
-	depot.position = Vector3(40, 10, 34)
-	add_child(depot)
-	register_flicker(depot, 1.7, 2.2, 0.16)
+	if not Game.low_gfx():
+		# Decorative omnis are expensive on Compatibility / phones.
+		var fridge_glow := OmniLight3D.new()
+		fridge_glow.light_color = Color(0.6, 0.85, 1.0)
+		fridge_glow.light_energy = 1.9
+		fridge_glow.omni_range = 34.0
+		fridge_glow.position = Vector3(52, 12, -34)
+		add_child(fridge_glow)
+		register_flicker(fridge_glow, 1.9, 0.7, 0.1)
+		var oven := OmniLight3D.new()
+		oven.light_color = Color(1.0, 0.7, 0.4)
+		oven.light_energy = 2.0
+		oven.omni_range = 28.0
+		oven.position = Vector3(-52, 8, 34)
+		add_child(oven)
+		register_flicker(oven, 2.0, 1.3, 0.07)
+		var depot := OmniLight3D.new()
+		depot.light_color = Color(0.4, 0.9, 1.0)
+		depot.light_energy = 1.7
+		depot.omni_range = 38.0
+		depot.position = Vector3(40, 10, 34)
+		add_child(depot)
+		register_flicker(depot, 1.7, 2.2, 0.16)
 
 # =========================================================================
 #  ROOM SHELL — checkerboard tile floor reads instantly as "kitchen".
@@ -126,12 +123,21 @@ func _build_table_mesa() -> void:
 	var table_pos := Vector3(-6, 0, 2)
 	# Real furniture asset (dining table, ~44 x 20.5 x 45 at this scale).
 	var table := add_landmark("dining_table", table_pos, 0, 44.0)
+	var table_top := 20.5
 	if table != null:
-		# Round tabletop: two crossed boxes approximate the disc.
-		_landmark_box(table, Vector3(0, 19.5, 0), Vector3(43, 2.4, 30))     # tabletop mesa
-		_landmark_box(table, Vector3(0, 19.5, 0), Vector3(30, 2.4, 43))
-		_landmark_box(table, Vector3(0, 9.5, 0), Vector3(8, 19, 8))       # center pedestal
-		_landmark_deck(table, 0.88, 1.1)
+		table_top = landmark_top_local(table)
+		# Colliders flush with the real mesh top (not a hardcoded guess).
+		_landmark_box(table, Vector3(0, table_top - 1.2, 0), Vector3(43, 2.4, 30))
+		_landmark_box(table, Vector3(0, table_top - 1.2, 0), Vector3(30, 2.4, 43))
+		_landmark_box(table, Vector3(0, table_top * 0.45, 0), Vector3(8, maxf(table_top - 2.0, 4.0), 8))
+		_landmark_deck(table, 0.9, 1.0)
+		# Premade crate as table clutter (replaces freestyle floating bowl).
+		var bowl := ModelLib.build_prop("crate", 4.5)
+		if bowl != null:
+			bowl.name = "FruitBowl"
+			bowl.position = Vector3(6, table_top, 0)
+			bowl.rotation_degrees.y = 25.0
+			table.add_child(bowl)
 	else:
 		_static_box(table_pos + Vector3(0, 19.5, 0), Vector3(44, 2, 26), wood)
 
@@ -139,8 +145,10 @@ func _build_table_mesa() -> void:
 	for spec in [[Vector3(-28, 0, 18), 25.0], [Vector3(26, 0, -20), -160.0]]:
 		var chair := add_landmark("chair", table_pos + spec[0], spec[1], 8.7)
 		if chair != null:
-			_landmark_box(chair, Vector3(0, 4.5, 0), Vector3(8.7, 9.0, 9.4))    # seat
-			_landmark_box(chair, Vector3(0, 14.5, 4), Vector3(8.7, 11.0, 1.6))  # backrest
+			var seat_top := landmark_top_local(chair) * 0.42
+			_landmark_box(chair, Vector3(0, seat_top * 0.5, 0), Vector3(8.7, maxf(seat_top, 4.0), 9.4))
+			_landmark_box(chair, Vector3(0, seat_top + 5.0, 4), Vector3(8.7, 11.0, 1.6))
+			_landmark_deck(chair, 0.85, 0.8)
 		else:
 			var seat := _static_box(table_pos + spec[0] + Vector3(0, 4.5, 0), Vector3(13, 9, 13), wood)
 			seat.rotation_degrees.y = spec[1]
@@ -150,10 +158,9 @@ func _build_table_mesa() -> void:
 	for i in 6:
 		var h := 3.3 * (i + 1)
 		_static_box(table_pos + Vector3(26 + i * 3.8, h - 1.65, 16 - i * 2.2), Vector3(9, 3.3, 11), ToyMaterials.plastic(colors[i % colors.size()], 0.65))
-
-	# Fruit bowl on top: soft round cover for the plateau fight.
-	var bowl := _static_box(table_pos + Vector3(6, 21.9, 0), Vector3(10, 3, 10), ToyMaterials.plastic(Color(0.85, 0.5, 0.2), 0.3), true)
-	bowl.name = "FruitBowl"
+	# Cache for pickups that belong on the mesa (world Y).
+	set_meta("table_top_y", table_pos.y + table_top)
+	set_meta("table_center", table_pos)
 
 # =========================================================================
 #  COUNTER RIDGE — north wall plateau, reached by the open-drawer staircase.
@@ -275,8 +282,11 @@ func _build_scattered_props() -> void:
 	Landmine.spawn(self, Vector3(48, 0, 40))
 
 	# Dust motes in the moon pool over the sink and across the tiles.
-	add_dust_motes(Vector3(-10, 30, -42), Vector3(20, 12, 12), 40, Color(0.75, 0.85, 1.0))
-	add_dust_motes(Vector3(0, 8, 10), Vector3(38, 7, 28), 32)
+	if not Game.low_gfx():
+		add_dust_motes(Vector3(-10, 30, -42), Vector3(20, 12, 12), 40, Color(0.75, 0.85, 1.0))
+		add_dust_motes(Vector3(0, 8, 10), Vector3(38, 7, 28), 32)
+	else:
+		add_dust_motes(Vector3(0, 8, 10), Vector3(30, 6, 22), 12)
 
 # =========================================================================
 #  UNITS — the biggest garrison yet.
@@ -309,6 +319,8 @@ func _spawn_units() -> void:
 		# Dining-table garrison — Y is a hint; settle snaps them onto the mesa.
 		{"route": [Vector3(-14, 23, -2), Vector3(8, 23, 6), Vector3(0, 23, -4)], "mix": ["grenadier", "scout"]},
 	]
+	if Game.low_gfx():
+		patrols = patrols.slice(0, 4)
 	for patrol in patrols:
 		var route: Array = patrol.route
 		for i in 2:
@@ -329,31 +341,34 @@ func _spawn_units() -> void:
 
 func _spawn_pickups_and_toys() -> void:
 	scatter_coins(ROOM_W * 0.4, ROOM_D * 0.4)
-	for pos in [Vector3(-30, 0, 12), Vector3(14, 0, -16), Vector3(-6, 21.2, 2), Vector3(46, 0, 0), Vector3(-16, 26.2, -ROOM_D / 2 + 12)]:
+	var ty: float = float(get_meta("table_top_y", 21.0))
+	var tc: Vector3 = get_meta("table_center", Vector3(-6, 0, 2))
+	for pos in [Vector3(-30, 0, 12), Vector3(14, 0, -16), Vector3(tc.x, ty, tc.z), Vector3(46, 0, 0), Vector3(-16, 26.2, -ROOM_D / 2 + 12)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(-18, 0, -12), Vector3(28, 0, 8), Vector3(52, 0, -22), Vector3(2, 0, 32)]:
 		Pickup.spawn_parts(self, pos, 5)
-	for pos in [Vector3(-36, 0, 2), Vector3(20, 0, 34), Vector3(0, 21.2, -4)]:
+	for pos in [Vector3(-36, 0, 2), Vector3(20, 0, 34), Vector3(tc.x + 6, ty, tc.z - 4)]:
 		Pickup.spawn_ammo(self, pos)
 	spawn_weapon_drop(Vector3(38, 0, 20), "soaker")
 	spawn_weapon_drop(Vector3(-24, 0, 24), "repeater")
-	# Sky cache on the dining table: coin ring + shield, jetpack-only loot.
+	# Mesa cache: coin ring + shield + fuel — snap settles them onto the deck.
 	for i in 6:
-		Pickup.spawn_coin(self, Vector3(-6, 21.2, 2) + Vector3(sin(i * TAU / 6.0) * 6.0, 0, cos(i * TAU / 6.0) * 6.0), 2)
-	Pickup.spawn_powerup(self, Vector3(-14, 21.2, -6), Pickup.Kind.SHIELD)
-	Pickup.spawn_fuel(self, Vector3(2, 21.2, 10))
+		Pickup.spawn_coin(self, Vector3(tc.x, ty, tc.z) + Vector3(sin(i * TAU / 6.0) * 6.0, 0, cos(i * TAU / 6.0) * 6.0), 2)
+	Pickup.spawn_powerup(self, Vector3(tc.x - 8, ty, tc.z - 6), Pickup.Kind.SHIELD)
+	Pickup.spawn_fuel(self, Vector3(tc.x + 8, ty, tc.z + 8))
 	var toy_spots := [
-		["Chef Whiskers", Vector3(-34, 26.6, -ROOM_D / 2 + 12)],  # in the sink
-		["Sgt. Spoon", Vector3(-6, 21.6, 8)],                     # on the table
-		["Magneto Max", Vector3(52, 0.5, -24)],                   # behind the fridge
-		["Crunchy", Vector3(40, 0.5, 34)],                        # inside the fort
-		["Mopsy", Vector3(-58, 0.5, -40)],                        # far dark corner
+		["Chef Whiskers", Vector3(-34, 26.6, -ROOM_D / 2 + 12)],
+		["Sgt. Spoon", Vector3(tc.x, ty, tc.z + 6)],
+		["Magneto Max", Vector3(52, 0.5, -24)],
+		["Crunchy", Vector3(40, 0.5, 34)],
+		["Mopsy", Vector3(-58, 0.5, -40)],
 	]
 	for spot in toy_spots:
 		var toy := LostToy.new()
 		toy.toy_name = spot[0]
 		add_child(toy)
 		toy.position = spot[1]
+		toy.call_deferred("snap_to_surface")
 
 # =========================================================================
 #  MISSION — "COUNTER STRIKE"

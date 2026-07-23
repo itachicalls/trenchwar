@@ -23,17 +23,15 @@ static func make_night_environment(fog_color: Color, ambient: Color, ambient_ene
 	env.tonemap_exposure = 1.35
 	# Bloom is a full-screen post pass — phones skip it, emissive materials
 	# still read bright without it.
-	env.glow_enabled = not Game.is_touch()
+	env.glow_enabled = not Game.low_gfx()
 	env.glow_intensity = 0.7
 	env.glow_bloom = 0.15
 	env.glow_hdr_threshold = 0.9
-	# Subtle contact shadows on desktop (Forward+) only — the web build runs
-	# Compatibility where SSAO costs frames for zero visual change.
-	# IMPORTANT: at toy scale (1 unit ≈ 3 cm) the default SSAO radius is as big
-	# as a whole soldier and blacks out every character. Keep it tiny and mild.
-	env.ssao_enabled = not OS.has_feature("web")
-	env.ssao_intensity = 0.7
-	env.ssao_radius = 0.4
+	# SSAO: desktop Forward+ only. Web/Compatibility pays full price for nothing.
+	# IMPORTANT: at toy scale the default SSAO radius blacks out soldiers.
+	env.ssao_enabled = not Game.low_gfx()
+	env.ssao_intensity = 0.55
+	env.ssao_radius = 0.35
 	env.ssao_light_affect = 0.0
 	env.ssao_ao_channel_affect = 0.0
 	env.fog_enabled = true
@@ -195,6 +193,26 @@ func _landmark_deck(rig: Node3D, inset: float = 0.92, thickness: float = 1.2) ->
 	var top_y := aabb.size.y
 	var size := Vector3(aabb.size.x * inset, thickness, aabb.size.z * inset)
 	_landmark_box(rig, Vector3(0, top_y - thickness * 0.35, 0), size)
+
+## Local-space top of a landmark's scaled AABB (floor of rig is y=0).
+func landmark_top_local(rig: Node3D) -> float:
+	if rig == null or not rig.has_meta("aabb"):
+		return 0.0
+	return (rig.get_meta("aabb") as AABB).size.y
+
+## Raycast down onto world geometry; returns Y for an object resting on the hit.
+## Call after the node is inside the tree (prefer call_deferred).
+static func surface_y_at(world: World3D, xz: Vector3, hover: float = 0.05, probe_up: float = 28.0) -> float:
+	if world == null:
+		return xz.y + hover
+	var from := Vector3(xz.x, xz.y + probe_up, xz.z)
+	var to := Vector3(xz.x, xz.y - 60.0, xz.z)
+	var q := PhysicsRayQueryParameters3D.create(from, to)
+	q.collision_mask = 0b0001
+	var hit := world.direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return xz.y + hover
+	return hit.position.y + hover
 
 ## Visual-only prop (no collision) — pillows, cushions, clutter that must not
 ## swallow the player when they land on the furniture deck underneath.

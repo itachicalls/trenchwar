@@ -56,6 +56,7 @@ static func _place(root: Node, p: Pickup, position: Vector3) -> void:
 	root.add_child(p)
 	p.global_position = position + Vector3.UP * 0.55
 	p._base_y = p.global_position.y
+	p.call_deferred("snap_to_surface")
 
 static func _make(kind_: Kind, amount_: int) -> Pickup:
 	var p := Pickup.new()
@@ -89,6 +90,14 @@ func _ready() -> void:
 		Kind.FUEL: _build_fuelcan(color)
 	_build_presentation(color)
 	body_entered.connect(_on_body_entered)
+
+## Drop onto the nearest walkable surface so mesa / counter loot sits flush.
+func snap_to_surface() -> void:
+	if not is_inside_tree() or get_world_3d() == null:
+		return
+	var y := RoomBase.surface_y_at(get_world_3d(), global_position, 0.45)
+	global_position = Vector3(global_position.x, y, global_position.z)
+	_base_y = y
 
 # --- type-specific toy meshes ---
 
@@ -358,7 +367,7 @@ func _process(delta: float) -> void:
 	if _magnetized and p != null and is_instance_valid(p):
 		global_position = global_position.lerp(p.global_position + Vector3.UP * 0.8, MAGNET_SPEED * delta)
 		return
-	global_position.y = _base_y + sin(_t * 2.4) * 0.14
+	global_position.y = _base_y + sin(_t * 2.4) * 0.08
 	if p != null and is_instance_valid(p) and global_position.distance_to(p.global_position) < MAGNET_RANGE:
 		_magnetized = true
 
