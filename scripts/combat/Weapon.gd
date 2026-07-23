@@ -48,10 +48,20 @@ func try_fire(direction: Vector3) -> bool:
 		return false
 	_cooldown = 1.0 / (data.fire_rate * rate_mult)
 	ammo -= 1
+	var base := direction.normalized()
 	for i in data.pellets:
 		var spread := deg_to_rad(data.spread_degrees)
-		var dir := direction.rotated(Vector3.UP, randf_range(-spread, spread))
-		dir = dir.rotated(dir.cross(Vector3.UP).normalized(), randf_range(-spread, spread))
+		# Cross(UP) collapses when firing nearly straight up/down — that used
+		# to NaN the shot and force a horizontal "forward" feel on ledges.
+		var yaw_axis := Vector3.UP
+		var pitch_axis := base.cross(yaw_axis)
+		if pitch_axis.length_squared() < 0.001:
+			pitch_axis = base.cross(Vector3.RIGHT)
+		if pitch_axis.length_squared() < 0.001:
+			pitch_axis = Vector3.FORWARD
+		pitch_axis = pitch_axis.normalized()
+		var dir := base.rotated(yaw_axis, randf_range(-spread, spread))
+		dir = dir.rotated(pitch_axis, randf_range(-spread, spread)).normalized()
 		Projectile.spawn(self, muzzle.global_position, dir, data, owner_unit, faction, damage_mult)
 	# Heavier weapons flash bigger and kick the in-hand gun model harder —
 	# each gun gets its own visible firing personality from its recoil stat.

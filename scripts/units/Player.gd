@@ -262,7 +262,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.relative.length() > 250.0:
 			return
 		_yaw -= event.relative.x * MOUSE_SENS
-		_pitch = clampf(_pitch - event.relative.y * MOUSE_SENS, -1.2, 0.7)
+		_pitch = clampf(_pitch - event.relative.y * MOUSE_SENS, -1.35, 1.05)
 
 ## THE "force looks left when firing" bug, root-caused: rooms rotate the
 ## Player NODE to face the action (player.rotation_degrees.y = ...), but they
@@ -288,7 +288,7 @@ func _consume_touch_look() -> void:
 	if Game.touch_look == Vector2.ZERO:
 		return
 	_yaw -= Game.touch_look.x
-	_pitch = clampf(_pitch - Game.touch_look.y, -1.2, 0.7)
+	_pitch = clampf(_pitch - Game.touch_look.y, -1.35, 1.05)
 	Game.touch_look = Vector2.ZERO
 
 ## Gyro fine-aim (COD-style). Touch does big turns; tilt does micro-adjust.
@@ -301,7 +301,7 @@ func _consume_gyro(delta: float) -> void:
 		return
 	# Landscape phone: device Y ≈ world yaw, device X ≈ pitch. Clamp wild spikes.
 	_yaw -= clampf(g.y, -4.0, 4.0) * GYRO_SENS * delta
-	_pitch = clampf(_pitch - clampf(g.x, -4.0, 4.0) * GYRO_SENS * delta, -1.2, 0.7)
+	_pitch = clampf(_pitch - clampf(g.x, -4.0, 4.0) * GYRO_SENS * delta, -1.35, 1.05)
 
 func _physics_process(delta: float) -> void:
 	if Game.needs_landscape:
@@ -341,22 +341,29 @@ func _update_regen(delta: float) -> void:
 func _update_aim_probe() -> void:
 	var from := _camera.global_position
 	var dir := -_camera.global_transform.basis.z
-	var query := PhysicsRayQueryParameters3D.create(from, from + dir * 200.0)
-	query.collision_mask = 0b0111
-	# Squadmates crossing the reticle must not hijack the aim point.
 	var excludes: Array[RID] = [get_rid()]
 	for mate in Game.squad:
 		if is_instance_valid(mate):
 			excludes.append(mate.get_rid())
-	query.exclude = excludes
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	var hit := _aim_ray(from, dir, 200.0, excludes)
+	# On a mesa looking down (or under a shelf looking up) the first hit is
+	# often YOUR deck/ceiling a meter in front of the lens. Pierce close
+	# non-hostiles when pitched steeply so lock can reach the fight below/above.
+	if not hit.is_empty() and absf(dir.y) > 0.42 \
+			and from.distance_to(hit.position) < 4.0 and not _is_hostile(hit.collider):
+		var past: Vector3 = hit.position + dir * 0.2
+		var pierce := _aim_ray(past, dir, 200.0 - from.distance_to(past), excludes)
+		if not pierce.is_empty():
+			hit = pierce
+		elif absf(dir.y) > 0.55:
+			# Empty air past the deck — keep aiming along the look axis.
+			hit = {}
 	if hit.is_empty():
 		_aim_point = from + dir * 200.0
 		aim_at_enemy = false
 	else:
 		_aim_point = hit.position
-		var c: Object = hit.collider
-		aim_at_enemy = _is_hostile(c)
+		aim_at_enemy = _is_hostile(hit.collider)
 	# Aim lock only while ADS or holding fire (incl. aim-gated auto-fire).
 	# Free-look exploring must not magnet onto every Chrome in view.
 	if _wants_aim_lock():
@@ -367,6 +374,14 @@ func _update_aim_probe() -> void:
 				aim_at_enemy = true
 	else:
 		_assist_target = null
+
+func _aim_ray(from: Vector3, dir: Vector3, dist: float, excludes: Array[RID]) -> Dictionary:
+	if get_world_3d() == null or dist <= 0.05:
+		return {}
+	var query := PhysicsRayQueryParameters3D.create(from, from + dir * dist)
+	query.collision_mask = 0b0111
+	query.exclude = excludes
+	return get_world_3d().direct_space_state.intersect_ray(query)
 
 func _wants_aim_lock() -> bool:
 	return Input.is_action_pressed("aim") or Input.is_action_pressed("fire")
@@ -414,9 +429,16 @@ func _apply_aim_assist(from: Vector3, dir: Vector3) -> void:
 		_assist_target = null
 		return
 	var chest: Vector3 = best.global_position + Vector3.UP * 0.8
+	# World geometry blocks assist — but the ledge you're standing on often
+	# clips the camera→chest ray when firing down. Ignore close blockers
+	# under a steep look so vertical lock still sticks.
 	var los := PhysicsRayQueryParameters3D.create(from, chest)
-	los.collision_mask = 0b0001   # only world geometry blocks the assist
-	if get_world_3d().direct_space_state.intersect_ray(los).is_empty():
+	los.collision_mask = 0b0001
+	var block := get_world_3d().direct_space_state.intersect_ray(los)
+	var blocked := not block.is_empty()
+	if blocked and absf(dir.y) > 0.4 and from.distance_to(block.position) < 4.0:
+		blocked = false
+	if not blocked:
 		_assist_target = best
 		var strength: float = lerpf(
 			0.97 if campaign else 0.9,
@@ -444,18 +466,21 @@ func _apply_lock_magnet(delta: float) -> void:
 	if to.length_squared() < 0.01:
 		return
 	var want := to.normalized()
+	var want_pitch := asin(clampf(want.y, -0.95, 0.95))
+	var pull := 3.2 * delta if Game.is_touch() else 2.4 * delta
 	var flat := Vector3(want.x, 0.0, want.z)
+	# Directly above/below: still pitch the camera — old code bailed and left
+	# you stuck staring horizontally off the ledge.
 	if flat.length_squared() < 0.0001:
+		_pitch = clampf(lerpf(_pitch, -want_pitch, pull), -1.35, 1.05)
 		return
 	var want_yaw := atan2(-flat.x, -flat.z)
-	var want_pitch := asin(clampf(want.y, -0.95, 0.95))
-	# Only pull when already roughly on target — wild flicks stay free.
+	# Only pull yaw when already roughly on target — wild flicks stay free.
+	# Pitch still eases in so vertical track isn't gated by yaw error.
 	var yaw_err := absf(wrapf(want_yaw - _yaw, -PI, PI))
-	if yaw_err > deg_to_rad(22.0):
-		return
-	var pull := 3.2 * delta if Game.is_touch() else 2.4 * delta
-	_yaw = lerp_angle(_yaw, want_yaw, pull)
-	_pitch = clampf(lerpf(_pitch, -want_pitch, pull), -1.2, 0.7)
+	if yaw_err <= deg_to_rad(28.0):
+		_yaw = lerp_angle(_yaw, want_yaw, pull)
+	_pitch = clampf(lerpf(_pitch, -want_pitch, pull * 1.15), -1.35, 1.05)
 
 func _update_camera(delta: float) -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
@@ -553,7 +578,12 @@ func _update_combat() -> void:
 		if weapon.try_fire(_aim_direction()):
 			# Snap the body square to the shot the instant it fires — no
 			# lerp lag frame where the soldier fires across his shoulder.
-			face_direction(_aim_point - global_position, 1.0, 999.0)
+			# Pure vertical aims have no horizontal component; face camera yaw.
+			var face := _aim_point - global_position
+			face.y = 0.0
+			if face.length_squared() < 0.04:
+				face = -Basis(Vector3.UP, _yaw).z
+			face_direction(face, 1.0, 999.0)
 			_shake = minf(_shake + 0.35 * weapon.data.recoil, 2.0)
 	if Input.is_action_just_pressed("reload"):
 		weapon.reload()
@@ -561,12 +591,19 @@ func _update_combat() -> void:
 ## Fire toward whatever the crosshair probe hit this tick.
 func _aim_direction() -> Vector3:
 	var cam_fwd := -_camera.global_transform.basis.z
-	var dir := _aim_point - weapon.muzzle.global_position
-	# Hugging a wall can put the aim point BEHIND the muzzle, which would
-	# invert the shot. Fall back to camera-forward in that case.
-	if dir.dot(cam_fwd) < 0.2:
+	# Gun is body-mounted (yaw only). Steep look-downs/ups make muzzle→hit
+	# read as "behind the barrel" and the old fallback locked you to a flat
+	# forward shot off the ledge. Trust the camera whenever pitch is steep.
+	if absf(cam_fwd.y) > 0.5:
 		return cam_fwd
-	return dir.normalized()
+	var dir := _aim_point - weapon.muzzle.global_position
+	if dir.length_squared() < 0.0001:
+		return cam_fwd
+	dir = dir.normalized()
+	# Hugging a wall can put the aim point BEHIND the muzzle — fall back.
+	if dir.dot(cam_fwd) < 0.05:
+		return cam_fwd
+	return dir
 
 func _update_interactions() -> void:
 	if Input.is_action_just_pressed("swap_weapon"):
