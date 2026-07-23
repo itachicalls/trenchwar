@@ -480,7 +480,7 @@ func _show_main_menu() -> void:
 		_button(box, "BARRACKS", _show_barracks, UiTheme.PURPLE)
 		_button(box, "QUIT", func(): get_tree().quit(), UiTheme.RED)
 		_spacer(box, 20)
-		_subtitle(box, "Rotate to landscape to deploy.\nGyro + auto-fire on by default.", 18, UiTheme.CYAN)
+		_subtitle(box, "Rotate to landscape to deploy.\nHold AIM for auto-fire on targets.", 18, UiTheme.CYAN)
 	else:
 		var small := _title(box, "TOY SOLDIERS AT WAR", 24, UiTheme.AMBER)
 		small.add_theme_constant_override("outline_size", 5)
@@ -712,7 +712,7 @@ func _show_pause_menu() -> void:
 			Game.gyro_enabled = not Game.gyro_enabled
 			Game.save_progress()
 			_show_pause_menu(), UiTheme.CYAN)
-		_button(box, "AUTO-FIRE: %s" % ("ON" if Game.auto_fire_enabled else "OFF"), func():
+		_button(box, "AUTO-FIRE (AIM): %s" % ("ON" if Game.auto_fire_enabled else "OFF"), func():
 			Game.auto_fire_enabled = not Game.auto_fire_enabled
 			Game.save_progress()
 			_show_pause_menu(), UiTheme.AMBER)

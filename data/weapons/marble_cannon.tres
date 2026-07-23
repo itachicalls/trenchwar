@@ -6,9 +6,9 @@
 script = ExtResource("1")
 display_name = "Marble Cannon"
 damage = 45.0
-fire_rate = 0.8
+fire_rate = 1.5
 magazine_size = 10
-reload_time = 2.4
+reload_time = 2.0
 projectile_speed = 38.0
 projectile_scale = 2.6
 spread_degrees = 0.2

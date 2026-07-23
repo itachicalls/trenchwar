@@ -186,6 +186,36 @@ func _landmark_box(rig: Node3D, local_pos: Vector3, size: Vector3) -> void:
 	body.position = local_pos
 	rig.add_child(body)
 
+## Thin walkable deck on top of a landmark's visual AABB. Stops the player
+## sinking into soft-looking cushions whose hand colliders sat too low.
+func _landmark_deck(rig: Node3D, inset: float = 0.92, thickness: float = 1.2) -> void:
+	if rig == null or not rig.has_meta("aabb"):
+		return
+	var aabb: AABB = rig.get_meta("aabb")
+	var top_y := aabb.size.y
+	var size := Vector3(aabb.size.x * inset, thickness, aabb.size.z * inset)
+	_landmark_box(rig, Vector3(0, top_y - thickness * 0.35, 0), size)
+
+## Visual-only prop (no collision) — pillows, cushions, clutter that must not
+## swallow the player when they land on the furniture deck underneath.
+func _deco_box(pos: Vector3, size: Vector3, mat: Material, rounded: bool = false) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	if rounded:
+		var cap := CapsuleMesh.new()
+		cap.radius = minf(size.y, size.z) * 0.5
+		cap.height = size.x
+		mi.mesh = cap
+		mi.rotation_degrees.z = 90.0
+		mi.scale = Vector3(1, size.y / minf(size.y, size.z), size.z / minf(size.y, size.z))
+	else:
+		var bm := BoxMesh.new()
+		bm.size = size
+		mi.mesh = bm
+	mi.material_override = mat
+	mi.position = pos
+	add_child(mi)
+	return mi
+
 ## Collision-only box: invisible, but AI navigation still respects it.
 func _invisible_box(pos: Vector3, size: Vector3) -> StaticBody3D:
 	var body := StaticBody3D.new()

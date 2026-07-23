@@ -6,9 +6,9 @@
 script = ExtResource("1")
 display_name = "Dart Sniper"
 damage = 70.0
-fire_rate = 0.9
+fire_rate = 1.7
 magazine_size = 12
-reload_time = 2.2
+reload_time = 1.8
 projectile_speed = 95.0
 projectile_scale = 1.6
 spread_degrees = 0.1

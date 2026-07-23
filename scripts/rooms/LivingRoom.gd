@@ -83,10 +83,11 @@ func _build_couch_mountains() -> void:
 	# armrest towers — all walkable, reached by the magazine ramp.
 	var couch := add_landmark("sofa", Vector3(0, 0, couch_z), 0, 80.0)
 	if couch != null:
-		_landmark_box(couch, Vector3(0, 7, 3), Vector3(66, 14, 26))       # seat deck, top 14
+		_landmark_box(couch, Vector3(0, 8, 4), Vector3(66, 16, 24))       # seat deck (raised for cushions)
 		_landmark_box(couch, Vector3(0, 16, -12.5), Vector3(80, 32, 10))  # backrest cliff, top 32
 		_landmark_box(couch, Vector3(-36.5, 10, 3), Vector3(9, 20, 26))   # armrest towers, top 20
 		_landmark_box(couch, Vector3(36.5, 10, 3), Vector3(9, 20, 26))
+		_landmark_deck(couch, 0.78, 1.4)   # firm top plate matching the mesh AABB
 	else:
 		_static_box(Vector3(0, 5, couch_z), Vector3(80, 10, 22), ToyMaterials.soft(Color(0.35, 0.42, 0.55)))
 	# Fallen-magazine ramp up onto the seat deck. Sized so the low end rests
@@ -115,9 +116,10 @@ func _build_coffee_table_plateau() -> void:
 	# Real furniture asset (Kenney coffee table, ~46 x 16 x 27.8 at this scale).
 	var table := add_landmark("coffee_table", Vector3.ZERO, 0, 46.0)
 	if table != null:
-		_landmark_box(table, Vector3(0, 15, 0), Vector3(46, 2.2, 27.8))   # tabletop plateau
+		_landmark_box(table, Vector3(0, 15.2, 0), Vector3(46, 2.6, 27.8))   # tabletop plateau
 		for leg in [Vector3(-20.5, 0, -11.5), Vector3(20.5, 0, -11.5), Vector3(-20.5, 0, 11.5), Vector3(20.5, 0, 11.5)]:
 			_landmark_box(table, leg + Vector3(0, 7, 0), Vector3(3.5, 14, 3.5))
+		_landmark_deck(table, 0.9, 1.0)
 	else:
 		_static_box(Vector3(0, 15, 0), Vector3(46, 2, 22), wood)
 	# Coaster helipad marking.

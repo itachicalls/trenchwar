@@ -6,13 +6,13 @@
 script = ExtResource("1")
 display_name = "Rubber Band Repeater"
 damage = 28.0
-fire_rate = 2.2
+fire_rate = 5.0
 magazine_size = 30
-reload_time = 1.8
-projectile_speed = 42.0
+reload_time = 1.5
+projectile_speed = 48.0
 projectile_scale = 1.6
 spread_degrees = 0.4
-automatic = false
+automatic = true
 pellets = 1
 projectile_color = Color(0.85, 0.6, 0.45, 1.0)
 sound = "twang"

@@ -126,13 +126,14 @@ func _build_bed_fortress() -> void:
 	# Colliders are hand-shaped: mattress plateau you fight on + headboard.
 	var bed := add_landmark("bed_double", bed_pos, 0, 50.0)
 	if bed != null:
-		_landmark_box(bed, Vector3(0, 4.75, 0), Vector3(41, 9.5, 49))    # mattress deck, top 9.5
-		_landmark_box(bed, Vector3(0, 13, -23.5), Vector3(41, 7.5, 3))   # headboard wall
+		_landmark_box(bed, Vector3(0, 5.4, 0), Vector3(41, 10.8, 49))   # mattress deck (raised)
+		_landmark_box(bed, Vector3(0, 13, -23.5), Vector3(41, 7.5, 3))  # headboard wall
+		_landmark_deck(bed, 0.85, 1.3)
 	else:
 		_static_box(bed_pos + Vector3(0, 8, 0), Vector3(38, 4, 50), blanket)
-	# Pillow mountain cover on the plateau (soft primitives read as bedding).
-	_static_box(bed_pos + Vector3(0, 11.2, -16), Vector3(26, 4, 10), pillow, true)
-	_static_box(bed_pos + Vector3(-7, 13.4, -18), Vector3(12, 3.2, 7), pillow, true)
+	# Pillows are VISUAL only — colliding cushions used to swallow the player.
+	_deco_box(bed_pos + Vector3(0, 11.6, -16), Vector3(26, 3.2, 10), pillow, true)
+	_deco_box(bed_pos + Vector3(-7, 13.6, -18), Vector3(12, 2.6, 7), pillow, true)
 	# Blanket ramp: the route up the fortress.
 	var ramp := _static_box(bed_pos + Vector3(23, 4.6, 12), Vector3(14, 1.5, 16), blanket)
 	ramp.rotation_degrees.z = -30.0
@@ -146,9 +147,10 @@ func _build_desk_command_center() -> void:
 	# Real furniture asset (Quaternius desk, ~34 x 17 x 16 at this scale).
 	var desk := add_landmark("desk", desk_pos, 0, 34.0)
 	if desk != null:
-		_landmark_box(desk, Vector3(0, 16.2, 0), Vector3(34, 2, 15.8))    # desktop plateau
+		_landmark_box(desk, Vector3(0, 16.2, 0), Vector3(34, 2.4, 15.8))   # desktop plateau
 		_landmark_box(desk, Vector3(-16, 7.6, 0), Vector3(2, 15.2, 15))   # side panels
 		_landmark_box(desk, Vector3(16, 7.6, 0), Vector3(2, 15.2, 15))
+		_landmark_deck(desk, 0.9, 1.0)
 	else:
 		_static_box(desk_pos + Vector3(0, 16, 0), Vector3(34, 2, 16), wood)
 	# Monitor glow — the "command screen".

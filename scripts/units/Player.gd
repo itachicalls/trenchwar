@@ -26,13 +26,14 @@ var _shield_bubble: MeshInstance3D
 
 ## Jetpack: double-tap jump to engage, hold to burn. Gas cans refill it.
 const FUEL_MAX := 100.0
-const JET_DRAIN := 22.0        ## fuel per second of burn
-const JET_LIFT := 9.5          ## target climb speed
+const JET_DRAIN := 20.0        ## fuel per second of burn
+const JET_LIFT := 14.0         ## target climb speed (clears couch/bed decks)
 var fuel := FUEL_MAX
 var _jet_engaged := false
 var _jet_flames: Array = []
 var _jet_sfx_timer := 0.0
 var _fuel_warned := false
+var _jet_burning := false
 
 ## Read by the HUD every frame for the dynamic crosshair.
 var aim_at_enemy := false
@@ -56,6 +57,17 @@ func _unit_ready() -> void:
 	# add_child (so after this very function ran). _fold_node_yaw() in the
 	# physics loop is what actually adopts it; this just covers pre-rotation.
 	_fold_node_yaw()
+	# Solid furniture landings: snap to decks, don't sink into couch/bed tops.
+	floor_snap_length = 0.4
+	floor_stop_on_slope = true
+	floor_constant_speed = true
+	floor_max_angle = deg_to_rad(52.0)
+	safe_margin = 0.08
+	# Slightly slimmer capsule so jet cresting clears furniture lips.
+	for c in get_children():
+		if c is CollisionShape3D and c.shape is CapsuleShape3D:
+			(c.shape as CapsuleShape3D).radius = 0.28
+			break
 	# Store upgrades bought with coins apply here, on every spawn.
 	base_health = 200.0 + 50.0 * Game.upgrades.get("health", 0)
 	weapon.damage_mult = 1.0 + 0.2 * Game.upgrades.get("damage", 0)
@@ -131,23 +143,53 @@ func _update_jetpack(delta: float) -> void:
 	elif Input.is_action_just_pressed("jump") and fuel > 0.0:
 		_jet_engaged = true
 		Fx.ring_pulse(self, global_position, Color(1.0, 0.7, 0.2), 1.2, 0.3)
-	var burning := _jet_engaged and not is_on_floor() \
+	_jet_burning = _jet_engaged and not is_on_floor() \
 		and Input.is_action_pressed("jump") and fuel > 0.0
-	# Ran the tank dry mid-air: tell the player what refills it (once).
 	if _jet_engaged and fuel <= 0.0 and not _fuel_warned:
 		_fuel_warned = true
 		Events.notify.emit("JETPACK EMPTY — grab a GAS CAN to refuel!")
-	if burning:
-		velocity.y = move_toward(velocity.y, JET_LIFT, 55.0 * delta)
+	if _jet_burning:
+		velocity.y = move_toward(velocity.y, JET_LIFT, 70.0 * delta)
 		fuel = maxf(fuel - JET_DRAIN * delta, 0.0)
 		Events.fuel_changed.emit(fuel, FUEL_MAX)
+		_try_jet_mantle()
 		_jet_sfx_timer -= delta
 		if _jet_sfx_timer <= 0.0:
 			_jet_sfx_timer = 0.22
 			Sfx.play_at("engine", global_position, -16.0)
 	for f in _jet_flames:
-		if f.emitting != burning:
-			f.emitting = burning
+		if f.emitting != _jet_burning:
+			f.emitting = _jet_burning
+
+## When the jet hits a furniture SIDE, hop the capsule onto the ledge instead
+## of sliding forever against the wall (couch/bed cresting).
+func _try_jet_mantle() -> void:
+	if get_world_3d() == null:
+		return
+	var space := get_world_3d().direct_space_state
+	var forward := -global_transform.basis.z
+	forward.y = 0.0
+	if forward.length_squared() < 0.01:
+		forward = Vector3(0, 0, -1)
+	else:
+		forward = forward.normalized()
+	# Blocked at chest, clear above the lip → boost up and onto the deck.
+	var chest := global_position + Vector3.UP * 0.9
+	var wall := PhysicsRayQueryParameters3D.create(chest, chest + forward * 1.1)
+	wall.collision_mask = 0b0001
+	wall.exclude = [get_rid()]
+	var hit := space.intersect_ray(wall)
+	if hit.is_empty():
+		return
+	var above := global_position + Vector3.UP * 2.4 + forward * 0.35
+	var clear := PhysicsRayQueryParameters3D.create(above, above + forward * 0.8)
+	clear.collision_mask = 0b0001
+	clear.exclude = [get_rid()]
+	if not space.intersect_ray(clear).is_empty():
+		return
+	velocity.y = maxf(velocity.y, JET_LIFT + 4.0)
+	velocity.x += forward.x * 6.0
+	velocity.z += forward.z * 6.0
 
 # ------------------------------------------------------------- WEAPON SLOTS
 
@@ -299,8 +341,16 @@ func _update_aim_probe() -> void:
 		_aim_point = hit.position
 		var c: Object = hit.collider
 		aim_at_enemy = _is_hostile(c)
-	if not aim_at_enemy:
-		_apply_aim_assist(from, dir)
+	# Aim lock only while ADS or holding fire (incl. aim-gated auto-fire).
+	# Free-look exploring must not magnet onto every Chrome in view.
+	if _wants_aim_lock():
+		if not aim_at_enemy:
+			_apply_aim_assist(from, dir)
+	else:
+		_assist_target = null
+
+func _wants_aim_lock() -> bool:
+	return Input.is_action_pressed("aim") or Input.is_action_pressed("fire")
 
 func _is_hostile(c: Object) -> bool:
 	if not (c is Node):
@@ -362,7 +412,10 @@ func _apply_aim_assist(from: Vector3, dir: Vector3) -> void:
 
 ## Campaign soft lock: gently magnetize the camera toward the locked chest so
 ## tracking a sprinting Chrome feels sticky without full aimbot.
+## Only while aiming / firing — never during free look.
 func _apply_lock_magnet(delta: float) -> void:
+	if not _wants_aim_lock():
+		return
 	if not Game.in_campaign() or _assist_target == null or not is_instance_valid(_assist_target):
 		return
 	if _camera == null:
@@ -406,21 +459,29 @@ func _update_camera(delta: float) -> void:
 		_camera.v_offset = dip
 
 func _update_movement(delta: float) -> void:
-	apply_gravity(delta)
+	# Jet burn cancels gravity so climb rate stays honest against tall decks.
+	_update_jetpack(delta)
+	if not _jet_burning:
+		apply_gravity(delta)
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var cam_basis := Basis(Vector3.UP, _yaw)
 	var wish := (cam_basis * Vector3(input.x, 0, input.y)).normalized()
 	var speed := move_speed * (SPRINT_MULT if Input.is_action_pressed("sprint") and not _aiming else 1.0)
 	if has_powerup("speed"):
 		speed *= 1.45
-	velocity.x = move_toward(velocity.x, wish.x * speed, 40.0 * delta)
-	velocity.z = move_toward(velocity.z, wish.z * speed, 40.0 * delta)
+	# Airborne jet: keep full air control so you can crest furniture tops.
+	var accel := 40.0 if is_on_floor() else 28.0
+	velocity.x = move_toward(velocity.x, wish.x * speed, accel * delta)
+	velocity.z = move_toward(velocity.z, wish.z * speed, accel * delta)
 	if Input.is_action_just_pressed("jump") and is_on_floor():
 		velocity.y = 13.0   # ~3.5 u apex: book-stair steps are jumpable
 		Sfx.play("step", -12.0)
 		Fx.dust(self, global_position)
-	_update_jetpack(delta)
 	move_and_slide()
+	# Plant hard on decks — kill residual downward speed so we don't sink
+	# a frame into couch cushions / mattress colliders.
+	if is_on_floor():
+		velocity.y = 0.0
 
 	# Landing feedback: camera dip + dust kick.
 	if is_on_floor() and not _was_on_floor:
@@ -465,9 +526,8 @@ func _update_combat() -> void:
 	if Game.needs_landscape:
 		return
 	_aiming = Input.is_action_pressed("aim")
-	# Auto-fire: when the reticle is on a hostile, keep shooting (mobile
-	# default — frees the right thumb to look while the gun tracks).
-	var auto := Game.is_touch() and Game.auto_fire_enabled and aim_at_enemy
+	# Auto-fire ONLY while ADS + reticle on a hostile — hip-fire stays manual.
+	var auto := Game.is_touch() and Game.auto_fire_enabled and _aiming and aim_at_enemy
 	var want_fire := Input.is_action_pressed("fire") or auto
 	if want_fire if (weapon.data.automatic or auto) else Input.is_action_just_pressed("fire"):
 		if weapon.try_fire(_aim_direction()):

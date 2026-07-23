@@ -6,9 +6,9 @@
 script = ExtResource("1")
 display_name = "Nerf Scattergun"
 damage = 9.0
-fire_rate = 1.6
+fire_rate = 2.8
 magazine_size = 16
-reload_time = 2.0
+reload_time = 1.7
 projectile_speed = 40.0
 projectile_scale = 1.4
 spread_degrees = 7.0

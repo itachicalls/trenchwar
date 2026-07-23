@@ -128,9 +128,10 @@ func _build_table_mesa() -> void:
 	var table := add_landmark("dining_table", table_pos, 0, 44.0)
 	if table != null:
 		# Round tabletop: two crossed boxes approximate the disc.
-		_landmark_box(table, Vector3(0, 19.5, 0), Vector3(43, 2, 30))     # tabletop mesa
-		_landmark_box(table, Vector3(0, 19.5, 0), Vector3(30, 2, 43))
+		_landmark_box(table, Vector3(0, 19.5, 0), Vector3(43, 2.4, 30))     # tabletop mesa
+		_landmark_box(table, Vector3(0, 19.5, 0), Vector3(30, 2.4, 43))
 		_landmark_box(table, Vector3(0, 9.5, 0), Vector3(8, 19, 8))       # center pedestal
+		_landmark_deck(table, 0.88, 1.1)
 	else:
 		_static_box(table_pos + Vector3(0, 19.5, 0), Vector3(44, 2, 26), wood)
 
