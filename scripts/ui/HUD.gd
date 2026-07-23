@@ -169,12 +169,14 @@ func _build() -> void:
 	squad_label = _label(bl_box, 11, UiTheme.SKY, true)
 	squad_label.text = _squad_text(0, "follow")
 
-	# --- Ammo (bottom-right): candy coral sticker ---
+	# --- Ammo (bottom-right): candy coral sticker.
+	# On touch, keep it in the corner so the LOOK stick can sit to its left.
 	var br := _sticker(Color(0.72, 0.28, 0.22, 0.86), UiTheme.ORANGE, 7)
 	br.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 10)
 	br.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	br.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	br.offset_bottom = -10
+	br.offset_bottom = -8
+	br.offset_right = -8
 	var br_box := VBoxContainer.new()
 	br_box.add_theme_constant_override("separation", 1)
 	br.add_child(br_box)

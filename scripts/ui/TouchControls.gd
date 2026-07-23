@@ -60,22 +60,23 @@ func _layout() -> void:
 	else:
 		_safe_origin = Vector2.ZERO
 	_stick_radius = 14.0 * u
-	_lookstick_radius = 13.0 * u
+	_lookstick_radius = 12.5 * u
 	_stick_home = _safe_origin + Vector2(18.0 * u, vp.y - 20.0 * u)
-	_lookstick_home = _safe_origin + Vector2(vp.x - 18.0 * u, vp.y - 18.0 * u)
-	# FIRE cluster sits above the look stick so the right thumb has room.
+	# LOOK sits left of the ammo sticker, same bottom row (ammo keeps the corner).
+	_lookstick_home = _safe_origin + Vector2(vp.x - 40.0 * u, vp.y - 14.0 * u)
+	# FIRE cluster sits above that bottom ammo/look row.
 	_buttons = [
-		{"id": "fire", "pos": Vector2(vp.x - 14.0 * u, vp.y - 42.0 * u), "radius": 8.5 * u,
+		{"id": "fire", "pos": Vector2(vp.x - 16.0 * u, vp.y - 48.0 * u), "radius": 8.5 * u,
 			"action": "fire", "label": "FIRE", "toggle": false, "held": false},
-		{"id": "jump", "pos": Vector2(vp.x - 14.0 * u, vp.y - 62.0 * u), "radius": 6.5 * u,
+		{"id": "jump", "pos": Vector2(vp.x - 16.0 * u, vp.y - 68.0 * u), "radius": 6.5 * u,
 			"action": "jump", "label": "JUMP", "toggle": false, "held": false},
-		{"id": "aim", "pos": Vector2(vp.x - 30.0 * u, vp.y - 56.0 * u), "radius": 5.8 * u,
+		{"id": "aim", "pos": Vector2(vp.x - 34.0 * u, vp.y - 60.0 * u), "radius": 5.8 * u,
 			"action": "aim", "label": "AIM", "toggle": true, "held": false},
-		{"id": "reload", "pos": Vector2(vp.x - 32.0 * u, vp.y - 38.0 * u), "radius": 5.0 * u,
+		{"id": "reload", "pos": Vector2(vp.x - 36.0 * u, vp.y - 42.0 * u), "radius": 5.0 * u,
 			"action": "reload", "label": "R", "toggle": false, "held": false},
-		{"id": "swap", "pos": Vector2(vp.x - 46.0 * u, vp.y - 48.0 * u), "radius": 5.0 * u,
+		{"id": "swap", "pos": Vector2(vp.x - 50.0 * u, vp.y - 52.0 * u), "radius": 5.0 * u,
 			"action": "swap_weapon", "label": "SWAP", "toggle": false, "held": false},
-		{"id": "interact", "pos": Vector2(vp.x - 14.0 * u, vp.y - 78.0 * u), "radius": 5.5 * u,
+		{"id": "interact", "pos": Vector2(vp.x - 16.0 * u, vp.y - 84.0 * u), "radius": 5.5 * u,
 			"action": "interact", "label": "E", "toggle": false, "held": false},
 		{"id": "cmd1", "pos": Vector2(8.0 * u, vp.y - 42.0 * u), "radius": 4.2 * u,
 			"action": "cmd_follow", "label": "1", "toggle": false, "held": false},
@@ -138,6 +139,13 @@ func _input(event: InputEvent) -> void:
 		_touch_drag(event.index, event.position, event.relative)
 
 func _touch_down(finger: int, pos: Vector2) -> void:
+	# Look stick wins over nearby action buttons so R/FIRE can't bury it.
+	if _lookstick_finger == -1 and pos.distance_to(_lookstick_home) <= _lookstick_radius * 1.55:
+		_lookstick_finger = finger
+		_lookstick_origin = _lookstick_home
+		_lookstick_vec = Vector2.ZERO
+		_canvas.queue_redraw()
+		return
 	for b in _buttons:
 		if pos.distance_to(b.pos) <= b.radius * 1.15:
 			b.held = true
@@ -159,12 +167,6 @@ func _touch_down(finger: int, pos: Vector2) -> void:
 			_canvas.queue_redraw()
 			return
 	var vp := _canvas.get_viewport_rect().size
-	# Right look stick (grab zone slightly larger than the drawn rim).
-	if _lookstick_finger == -1 and pos.distance_to(_lookstick_home) <= _lookstick_radius * 1.35:
-		_lookstick_finger = finger
-		_lookstick_origin = _lookstick_home
-		_lookstick_vec = Vector2.ZERO
-		return
 	# Left 40% owns the move stick.
 	if pos.x < vp.x * 0.40 and _stick_finger == -1:
 		_stick_finger = finger
@@ -216,15 +218,15 @@ func _touch_drag(finger: int, pos: Vector2, relative: Vector2) -> void:
 
 func _draw_stick(home: Vector2, origin: Vector2, vec: Vector2, radius: float, held: bool, label: String) -> void:
 	var base := origin if held else home
-	_canvas.draw_circle(base, radius, Color(0.05, 0.09, 0.04, 0.42))
-	_canvas.draw_arc(base, radius, 0, TAU, 48, Color(0.9, 1.0, 0.85, 0.55), 4.0, true)
+	var fill_a := 0.58 if held else 0.5
+	_canvas.draw_circle(base, radius, Color(0.04, 0.08, 0.05, fill_a))
+	_canvas.draw_arc(base, radius, 0, TAU, 48, Color(0.95, 1.0, 0.88, 0.85), 5.0, true)
 	var knob := base + vec * radius * 0.75
-	_canvas.draw_circle(knob, radius * 0.42, Color(0.72, 0.9, 0.5, 0.85 if held else 0.55))
-	if not held:
-		var font := ThemeDB.fallback_font
-		var hs := font.get_string_size(label, HORIZONTAL_ALIGNMENT_CENTER, -1, int(radius * 0.28))
-		_canvas.draw_string(font, base + Vector2(-hs.x / 2.0, hs.y * 0.3), label,
-			HORIZONTAL_ALIGNMENT_CENTER, -1, int(radius * 0.28), Color(1, 1, 1, 0.7))
+	_canvas.draw_circle(knob, radius * 0.42, Color(0.78, 0.95, 0.55, 0.95 if held else 0.75))
+	var font := ThemeDB.fallback_font
+	var hs := font.get_string_size(label, HORIZONTAL_ALIGNMENT_CENTER, -1, int(radius * 0.28))
+	_canvas.draw_string(font, base + Vector2(-hs.x / 2.0, hs.y * 0.3), label,
+		HORIZONTAL_ALIGNMENT_CENTER, -1, int(radius * 0.28), Color(1, 1, 1, 0.9 if held else 0.8))
 
 func _draw_controls() -> void:
 	_draw_stick(_stick_home, _stick_origin, _stick_vec, _stick_radius, _stick_finger != -1, "MOVE")
