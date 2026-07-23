@@ -1,0 +1,19 @@
+Third-party CC0 assets used in The Trenches / Trenchwar
+=======================================================
+
+Models (characters, props, guns, tank)
+--------------------------------------
+Quaternius — Toon Shooter Game Kit and related prop/landmark packs
+https://quaternius.com/
+License: CC0 1.0 Universal
+
+Audio
+-----
+Kenney.nl — Sci-Fi Sounds, Impact Sounds, RPG Audio, Interface Sounds
+https://kenney.nl/
+Packaged mirrors used during import (Boyquotes / Calinou Godot ports)
+License: CC0 1.0 Universal
+
+Support the authors if you can:
+https://kenney.nl/donate
+https://www.patreon.com/quaternius

@@ -38,6 +38,20 @@ const VARIANTS := {
 	"juggernaut": {"gun": "ShortCannon", "weapon": "res://data/weapons/chrome_scatter.tres",
 		"health": 420.0, "speed": 3.0, "scale": 1.4, "tint": Color(0.3, 0.32, 0.5),
 		"vision": 15.0, "attack": 11.0, "burst": 3, "pause": 0.9},
+	# Level skins: premade enemy_yard / enemy_tunnel glTF aliases + distinct kits.
+	"yard_sniper": {"gun": "Sniper", "weapon": "res://data/weapons/chrome_lance.tres",
+		"health": 80.0, "speed": 4.6, "scale": 1.02, "tint": Color(0.55, 0.85, 1.6),
+		"vision": 34.0, "attack": 28.0, "burst": 1, "pause": 1.45,
+		"skin": "res://assets/models/enemy_yard.gltf"},
+	"tunnel_heavy": {"gun": "Shotgun", "weapon": "res://data/weapons/chrome_scatter.tres",
+		"health": 280.0, "speed": 3.4, "scale": 1.28, "tint": Color(1.1, 0.45, 0.2),
+		"vision": 14.0, "attack": 9.5, "burst": 2, "pause": 1.0,
+		"skin": "res://assets/models/enemy_tunnel.gltf"},
+	# Premade land_roomba driven as a skittering drone (basement specialty).
+	"roomba_drone": {"gun": "SMG", "weapon": "res://data/weapons/chrome_blaster.tres",
+		"health": 130.0, "speed": 7.8, "scale": 1.0, "tint": Color(0.7, 0.85, 1.2),
+		"vision": 16.0, "attack": 11.0, "burst": 5, "pause": 0.55,
+		"prop_unit": "roomba", "prop_size": 2.4},
 }
 
 @export var patrol_points: Array[Vector3] = []
@@ -72,7 +86,13 @@ var _needs_settle := true
 
 func _body_params() -> Dictionary:
 	var cfg: Dictionary = VARIANTS[variant]
-	return {"gun": cfg.gun, "tint": cfg.tint, "scale": cfg.scale}
+	var params := {"gun": cfg.gun, "tint": cfg.tint, "scale": cfg.scale}
+	if cfg.has("skin"):
+		params["skin"] = cfg.skin
+	if cfg.has("prop_unit"):
+		params["prop_unit"] = cfg.prop_unit
+		params["prop_size"] = cfg.get("prop_size", 2.0)
+	return params
 
 func _unit_ready() -> void:
 	add_to_group("enemies")

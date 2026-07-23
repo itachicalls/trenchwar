@@ -10,7 +10,7 @@ extends CanvasLayer
 ## Radians for a full screen-height drag.
 const LOOK_TURN := 3.2
 ## Full-deflection look-stick turn rate (rad/s).
-const LOOK_STICK_SPEED := 2.6
+const LOOK_STICK_SPEED := 3.1
 
 var _stick_finger := -1
 var _stick_home := Vector2.ZERO
@@ -29,6 +29,7 @@ var _canvas: Control
 var _buttons: Array[Dictionary] = []
 var _last_vp := Vector2.ZERO
 var _safe_origin := Vector2.ZERO
+var _dirty := true
 
 func _ready() -> void:
 	layer = 55
@@ -89,7 +90,7 @@ func _layout() -> void:
 	]
 	for b in _buttons:
 		b.pos += _safe_origin
-	_canvas.queue_redraw()
+	_dirty = true
 
 func _process(delta: float) -> void:
 	if _canvas.get_viewport_rect().size != _last_vp:
@@ -113,7 +114,10 @@ func _process(delta: float) -> void:
 			Input.action_release("sprint")
 	if _lookstick_finger != -1 and _lookstick_vec.length() > 0.08:
 		Game.touch_look += _lookstick_vec * LOOK_STICK_SPEED * delta
-	_canvas.queue_redraw()
+		_dirty = true
+	if _dirty:
+		_dirty = false
+		_canvas.queue_redraw()
 
 func _release_everything() -> void:
 	_stick_finger = -1
@@ -144,7 +148,7 @@ func _touch_down(finger: int, pos: Vector2) -> void:
 		_lookstick_finger = finger
 		_lookstick_origin = _lookstick_home
 		_lookstick_vec = Vector2.ZERO
-		_canvas.queue_redraw()
+		_dirty = true
 		return
 	for b in _buttons:
 		if pos.distance_to(b.pos) <= b.radius * 1.15:
@@ -164,7 +168,7 @@ func _touch_down(finger: int, pos: Vector2) -> void:
 				Input.parse_input_event(ev)
 			else:
 				Input.action_press(b.action)
-			_canvas.queue_redraw()
+			_dirty = true
 			return
 	var vp := _canvas.get_viewport_rect().size
 	# Left 40% owns the move stick.
@@ -192,16 +196,18 @@ func _touch_up(finger: int) -> void:
 		_lookstick_vec = Vector2.ZERO
 	if finger == _look_finger:
 		_look_finger = -1
-	_canvas.queue_redraw()
+	_dirty = true
 
 func _touch_drag(finger: int, pos: Vector2, relative: Vector2) -> void:
 	if finger == _stick_finger:
 		var v := (pos - _stick_origin) / _stick_radius
 		_stick_vec = v.limit_length(1.0)
+		_dirty = true
 		return
 	if finger == _lookstick_finger:
 		var lv := (pos - _lookstick_origin) / _lookstick_radius
 		_lookstick_vec = lv.limit_length(1.0)
+		_dirty = true
 		return
 	var is_fire_finger := false
 	for b in _buttons:

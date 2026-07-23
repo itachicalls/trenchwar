@@ -425,6 +425,9 @@ func _on_hit_confirmed(killed: bool) -> void:
 	var t := create_tween().set_parallel(true)
 	t.tween_property(hit_marker, "modulate:a", 0.0, 0.3)
 	t.tween_property(hit_marker, "scale", Vector2.ONE, 0.3)
+	if killed:
+		Fx.shake_camera(self, 0.08, 0.18)
+		Sfx.play("hit", -6.0, 0.12)
 
 func _on_player_damaged() -> void:
 	damage_flash.color.a = 0.28

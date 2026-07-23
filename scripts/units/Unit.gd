@@ -29,8 +29,13 @@ func _ready() -> void:
 	add_child(shape)
 
 	var bp := _body_params()
-	body_rig = ModelLib.build_character(faction, faction.id == "chrome_legion",
-		bp.get("gun", ""), bp.get("tint", Color.WHITE), bp.get("scale", 1.0))
+	if bp.get("prop_unit", "") != "":
+		body_rig = ModelLib.build_prop_unit(str(bp.prop_unit), float(bp.get("prop_size", 1.8)),
+			bp.get("tint", Color.WHITE))
+	else:
+		body_rig = ModelLib.build_character(faction, faction.id == "chrome_legion",
+			bp.get("gun", ""), bp.get("tint", Color.WHITE), bp.get("scale", 1.0),
+			str(bp.get("skin", "")))
 	add_child(body_rig)
 	if body_rig.has_meta("anim"):
 		_anim = body_rig.get_meta("anim")

@@ -42,7 +42,17 @@ const MISSIONS := {
 	"laundry": [
 		"ACT 3-2:  SPIN CYCLE  —  The Laundry Room",
 		preload("res://scripts/rooms/LaundryRoom.gd"),
-		"The final chapter. The Legion wired the washing machine into a doomsday\nagitator and the whole room shakes on its spin cycle.\n\nRescue the laundry crew. Destroy the detergent pumps. Then hold on —\nwhen the machine spins up, EVERYTHING moves.",
+		"The Legion wired the washing machine into a doomsday agitator and the\nwhole room shakes on its spin cycle.\n\nRescue the laundry crew. Destroy the detergent pumps. Then hold on —\nwhen the machine spins up, EVERYTHING moves.",
+	],
+	"porch": [
+		"ACT 3-3:  PORCH LIGHT  —  The Back Porch",
+		preload("res://scripts/rooms/Porch.gd"),
+		"Night air. A warm porch bulb. Chrome yard snipers in the hedge line and\na depot dug in past the watchtower.\n\nHold the signs. Burn the pods. Make the porch ours again.",
+	],
+	"basement": [
+		"ACT 4-1:  UNDER THE STAIRS  —  The Basement",
+		preload("res://scripts/rooms/Basement.gd"),
+		"Under the stairs: fuel dumps, container aisles, and Chrome roomba drones\nskittering through the dark.\n\nDetonate the dumps. Recover the lost toys. Scrap the drones.",
 	],
 	"skirmish": [
 		"SKIRMISH  —  Team Deathmatch (vs bots)",
@@ -55,7 +65,7 @@ const MISSIONS := {
 		"Four toy squads drop into the Sandbox. The cleanup zone closes in —\nanyone caught outside gets swept.\n\nRESURGENCE RULES: while one squadmate stands, the fallen redeploy.\nIn the final circles, respawns go dark. Last squad standing wins.",
 	],
 }
-const MISSION_ORDER := ["bedroom", "living_room", "kitchen", "bathroom", "garage", "backyard", "trenches", "laundry"]
+const MISSION_ORDER := ["bedroom", "living_room", "kitchen", "bathroom", "garage", "backyard", "trenches", "laundry", "porch", "basement"]
 
 const TIPS := [
 	"TIP: Rubber bands hurt. Aim-down-sights [RMB] tightens your spread.",
@@ -74,6 +84,9 @@ const TIPS := [
 	"TIP: In the bathroom, towel ramps are the only way up the porcelain.",
 	"TIP: The garage has TWO tanks. Bring a friend... or drive both, one at a time.",
 	"TIP: Molehills on the lawn are natural foxholes. Crest them, don't cross them.",
+	"TIP: On the porch, hold the signs to capture — standing still wins the zone.",
+	"TIP: Basement fuel barrels chain-react. One shot can clear a whole dump.",
+	"TIP: Roomba drones are low and fast. Aim down and lead the skitter.",
 ]
 
 ## Store catalog: permanent upgrades bought with coins. Levels stack.

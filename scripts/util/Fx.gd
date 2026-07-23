@@ -8,12 +8,14 @@ static func _root(node: Node) -> Node:
 	return node.get_tree().current_scene
 
 static func impact(node: Node, position: Vector3, color: Color = Color(1, 0.9, 0.5)) -> void:
-	_burst(_root(node), position, color, 8, 0.25, 3.0, 0.05)
+	_burst(_root(node), position, color, 5 if Game.low_gfx() else 8, 0.25, 3.0, 0.05)
 
 static func explosion(node: Node, position: Vector3, radius: float = 2.5) -> void:
 	var root := _root(node)
-	_burst(root, position, Color(1.0, 0.6, 0.15), 26, 0.5, radius * 3.0, 0.14)
-	_burst(root, position, Color(0.35, 0.32, 0.3), 16, 0.9, radius * 1.5, 0.3)
+	var hi := not Game.low_gfx()
+	_burst(root, position, Color(1.0, 0.6, 0.15), 14 if not hi else 26, 0.5, radius * 3.0, 0.14)
+	if hi:
+		_burst(root, position, Color(0.35, 0.32, 0.3), 16, 0.9, radius * 1.5, 0.3)
 	_flash(root, position, Color(1.0, 0.7, 0.3), radius * 2.2)
 	Sfx.play_at("explosion", position)
 
@@ -147,13 +149,13 @@ static func _flash(root: Node, position: Vector3, color: Color, range_: float) -
 ## Capped: heavy firefights spawned unbounded particle nodes.
 static var _live_bursts := 0
 static func _burst(root: Node, position: Vector3, color: Color, count: int, life: float, speed: float, size: float, gravity_shards: bool = false) -> void:
-	if _live_bursts >= (14 if Game.low_gfx() else 30):
+	if _live_bursts >= (10 if Game.low_gfx() else 28):
 		return
 	_live_bursts += 1
 	var p := CPUParticles3D.new()
 	p.one_shot = true
 	p.emitting = true
-	p.amount = count
+	p.amount = maxi(count / 2, 3) if Game.low_gfx() else count
 	p.lifetime = life
 	p.explosiveness = 1.0
 	p.direction = Vector3.UP

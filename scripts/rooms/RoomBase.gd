@@ -291,6 +291,60 @@ func add_barrel(pos: Vector3, yaw_deg: float = 0.0, target_size: float = 1.8, sp
 	barrel.rotation_degrees.y = yaw_deg
 	return barrel
 
+## Stand-to-capture zone marked with a premade sign prop (no freestyle flags).
+## Calls on_captured once when hold completes. Returns the Area3D zone.
+func add_capture_zone(pos: Vector3, objective_id: String = "capture",
+		hold_seconds: float = 6.0, radius: float = 7.0, on_captured: Callable = Callable()) -> Area3D:
+	var zone := Area3D.new()
+	zone.collision_layer = 0
+	zone.collision_mask = 0b0010
+	zone.add_to_group("capture_zones")
+	var cs := CollisionShape3D.new()
+	var cyl := CylinderShape3D.new()
+	cyl.radius = radius
+	cyl.height = 6.0
+	cs.shape = cyl
+	cs.position.y = 3.0
+	zone.add_child(cs)
+	add_child(zone)
+	zone.global_position = pos
+	add_prop("sign", pos + Vector3(0.0, 0.0, 0.0), 15.0, 3.2)
+	var label := Label3D.new()
+	label.text = "HOLD TO CAPTURE"
+	label.font_size = 56
+	label.pixel_size = 0.02
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.modulate = Color(1.0, 0.75, 0.3)
+	label.outline_size = 14
+	label.position = Vector3(0, 9.5, 0)
+	zone.add_child(label)
+	var progress := {"v": 0.0, "done": false}
+	var timer := Timer.new()
+	timer.wait_time = 0.1
+	timer.autostart = true
+	zone.add_child(timer)
+	timer.timeout.connect(func():
+		if progress.done or not Game.is_playing():
+			return
+		var inside := Game.player != null and is_instance_valid(Game.player) \
+			and zone.overlaps_body(Game.player)
+		progress.v = clampf(progress.v + (0.1 / hold_seconds if inside else -0.1 / (hold_seconds * 2.0)), 0.0, 1.0)
+		if progress.v <= 0.0 and not inside:
+			label.text = "HOLD TO CAPTURE"
+		elif not progress.done:
+			label.text = "CAPTURING  %d%%" % int(progress.v * 100)
+		if progress.v >= 1.0:
+			progress.done = true
+			label.text = "SECURED"
+			label.modulate = UiTheme.GREEN
+			zone.set_meta("captured", true)
+			Sfx.play("objective")
+			Missions.progress(objective_id)
+			if on_captured.is_valid():
+				on_captured.call()
+	)
+	return zone
+
 ## Drifting ambient dust motes: cheap, huge atmosphere win in dark rooms.
 func add_dust_motes(center: Vector3, extents: Vector3, amount: int = 40, color: Color = Color(0.9, 0.85, 0.7)) -> void:
 	var motes := CPUParticles3D.new()

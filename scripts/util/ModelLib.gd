@@ -19,9 +19,13 @@ const CHARACTER_GUNS := ["AK", "GrenadeLauncher", "Knife_1", "Knife_2", "Pistol"
 ## child "WeaponMount" node + meta "anim" -> AnimationPlayer (may be absent).
 ## gun: which in-hand weapon prop stays visible; scale_mult/tint distinguish
 ## enemy variants (scout/heavy) without extra models.
+## skin_path: optional override glTF (e.g. enemy_yard / enemy_tunnel). Empty = default faction mold.
 static func build_character(faction: FactionData, is_chrome: bool = false,
-		gun: String = "", tint: Color = Color.WHITE, scale_mult: float = 1.0) -> Node3D:
-	var path := ENEMY_SCENE if is_chrome else SOLDIER_SCENE
+		gun: String = "", tint: Color = Color.WHITE, scale_mult: float = 1.0,
+		skin_path: String = "") -> Node3D:
+	var path := skin_path
+	if path == "" or not ResourceLoader.exists(path):
+		path = ENEMY_SCENE if is_chrome else SOLDIER_SCENE
 	if not ResourceLoader.exists(path):
 		return ToyBodyBuilder.build_soldier(faction, is_chrome)
 	var rig := Node3D.new()
@@ -51,6 +55,24 @@ static func build_character(faction: FactionData, is_chrome: bool = false,
 	var mount := Node3D.new()
 	mount.name = "WeaponMount"
 	mount.position = Vector3(0.3, 0.75, -0.5)
+	rig.add_child(mount)
+	return rig
+
+## Premade landmark/prop driven as a unit body (roomba drones, etc.).
+static func build_prop_unit(prop_or_land: String, target_size: float, tint: Color = Color.WHITE) -> Node3D:
+	var rig := build_landmark(prop_or_land, target_size)
+	if rig == null:
+		rig = build_prop(prop_or_land, target_size)
+	if rig == null:
+		rig = Node3D.new()
+		rig.name = "BodyRig"
+	else:
+		rig.name = "BodyRig"
+	if tint != Color.WHITE:
+		_tint(rig, tint, 0.2, 0.5)
+	var mount := Node3D.new()
+	mount.name = "WeaponMount"
+	mount.position = Vector3(0.0, target_size * 0.35, -target_size * 0.25)
 	rig.add_child(mount)
 	return rig
 
