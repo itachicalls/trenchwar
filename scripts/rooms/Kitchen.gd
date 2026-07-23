@@ -150,11 +150,11 @@ func _build_table_mesa() -> void:
 			var seat := _static_box(table_pos + spec[0] + Vector3(0, 4.5, 0), Vector3(13, 9, 13), wood)
 			seat.rotation_degrees.y = spec[1]
 
-	# Cookbook staircase: the fighting route up the mesa.
+	# Cookbook staircase: east of the tabletop so books don't clip table legs.
 	var colors := [Color(0.7, 0.3, 0.25), Color(0.25, 0.45, 0.6), Color(0.8, 0.65, 0.25)]
 	for i in 6:
 		var h := 3.3 * (i + 1)
-		_static_box(table_pos + Vector3(26 + i * 3.8, h - 1.65, 16 - i * 2.2), Vector3(9, 3.3, 11), ToyMaterials.plastic(colors[i % colors.size()], 0.65))
+		_static_box(table_pos + Vector3(30 + i * 3.6, h - 1.65, 18 - i * 1.8), Vector3(9, 3.3, 11), ToyMaterials.plastic(colors[i % colors.size()], 0.65))
 	# Cache for pickups that belong on the mesa (world Y).
 	set_meta("table_top_y", table_pos.y + table_top)
 	set_meta("table_center", table_pos)
@@ -172,9 +172,9 @@ func _build_counter_ridge() -> void:
 	# Sink basin: a walled pit on the counter (great sniper cover).
 	for wall_spec in [[Vector3(-34, 27.5, ridge_z - 6), Vector3(20, 3, 2)], [Vector3(-34, 27.5, ridge_z + 6), Vector3(20, 3, 2)], [Vector3(-43, 27.5, ridge_z), Vector3(2, 3, 10)], [Vector3(-25, 27.5, ridge_z), Vector3(2, 3, 10)]]:
 		_static_box(wall_spec[0], wall_spec[1], top_mat)
-	# Open drawers: the staircase up the east end of the counter.
+	# Open drawers: thick stair plates clear of the cabinet mass.
 	for i in 3:
-		_static_box(Vector3(24 + i * 1.5, 5.0 + i * 7.0, ridge_z + 11 - i * 2.5), Vector3(16, 1.6, 8), cabinet)
+		_static_box(Vector3(30 + i * 1.2, 5.0 + i * 7.0, ridge_z + 14 - i * 2.0), Vector3(16, 2.4, 9), cabinet)
 
 # =========================================================================
 #  FRIDGE MONOLITH — northeast. Magnet letters on its face.
@@ -304,14 +304,14 @@ func _spawn_units() -> void:
 		mate.position = pos
 
 	var patrols := [
-		{"route": [Vector3(-24, 1, -8), Vector3(-2, 1, -20), Vector3(8, 1, 4)], "mix": ["trooper", "scout"]},
-		{"route": [Vector3(22, 1, 28), Vector3(36, 1, 12), Vector3(48, 1, 28)], "mix": ["heavy", "trooper"]},
+		{"route": [Vector3(-24, 1, -8), Vector3(-2, 1, -20), Vector3(8, 1, 4)], "mix": ["trooper", "chrome_ant"]},
+		{"route": [Vector3(22, 1, 28), Vector3(36, 1, 12), Vector3(48, 1, 28)], "mix": ["heavy", "chrome_beetle"]},
 		{"route": [Vector3(40, 1, -24), Vector3(56, 1, -8), Vector3(34, 1, -2)], "mix": ["trooper", "scout"]},
-		{"route": [Vector3(-36, 1, -34), Vector3(-14, 1, -40), Vector3(-28, 1, -22)], "mix": ["scout", "scout"]},
+		{"route": [Vector3(-36, 1, -34), Vector3(-14, 1, -40), Vector3(-28, 1, -22)], "mix": ["chrome_ant", "scout"]},
 		{"route": [Vector3(12, 28, -ROOM_D / 2 + 12), Vector3(-30, 28, -ROOM_D / 2 + 12)], "mix": ["sniper", "trooper"]},
 		{"route": [Vector3(30, 1, 40), Vector3(44, 1, 44), Vector3(52, 1, 36)], "mix": ["heavy", "sniper"]},
 		# Dining-table garrison — Y is a hint; settle snaps them onto the mesa.
-		{"route": [Vector3(-14, 23, -2), Vector3(8, 23, 6), Vector3(0, 23, -4)], "mix": ["grenadier", "scout"]},
+		{"route": [Vector3(-14, 23, -2), Vector3(8, 23, 6), Vector3(0, 23, -4)], "mix": ["grenadier", "chrome_beetle"]},
 	]
 	for patrol in patrols:
 		var route: Array = patrol.route
@@ -368,12 +368,15 @@ func _spawn_pickups_and_toys() -> void:
 func _start_mission() -> void:
 	Missions.start_mission("ACT 1 — COUNTER STRIKE")
 	Missions.add_objective("rescue", "Rescue the scattered squad  [E]", 2)
+	Missions.add_objective("snipers", "Silence the counter-ridge snipers", 2)
 	Missions.add_objective("barrels", "Blow the spice-rack fuel caches", 3)
 	Missions.add_objective("pods", "Destroy the cereal-fort supply depot", 3)
 	Missions.marker_provider = func(id: String) -> Vector3:
 		match id:
 			"rescue":
 				return nearest_in_group("green_allies", func(n): return n is SquadMate and n.captive)
+			"snipers":
+				return nearest_in_group("enemies", func(n): return n is EnemySoldier and n.variant == "sniper")
 			"barrels":
 				return nearest_in_group("explosive_barrels")
 			"pods":
@@ -381,15 +384,17 @@ func _start_mission() -> void:
 		return Vector3.INF
 	Events.notify.emit("The Legion is raiding the pantry. Take back the kitchen, soldier.")
 
-func _on_unit_died(_unit: Node) -> void:
-	if not _counterattack_sent and Missions.objectives.size() > 2 and Missions.objectives[2].count_done >= 2:
+func _on_unit_died(unit: Node) -> void:
+	if unit is EnemySoldier and unit.variant == "sniper":
+		Missions.progress("snipers")
+	if not _counterattack_sent and Missions.is_done("pods"):
 		_send_counterattack()
 
 func _send_counterattack() -> void:
 	_counterattack_sent = true
 	Events.notify.emit("WARNING: Chrome dropship on the counter! Reinforcements rappelling down!")
 	var chrome: FactionData = load("res://data/factions/chrome_legion.tres")
-	var mix := ["heavy", "commando", "scout", "grenadier", "sniper"]
+	var mix := ["heavy", "chrome_beetle", "chrome_ant", "grenadier", "sniper"]
 	for i in 5:
 		var enemy := EnemySoldier.new()
 		enemy.faction = chrome

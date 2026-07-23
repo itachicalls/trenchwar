@@ -53,13 +53,13 @@ func _build_shell_and_stairs() -> void:
 	var concrete := ToyMaterials.concrete(Color(0.42, 0.44, 0.48))
 	var wall := ToyMaterials.concrete(Color(0.36, 0.38, 0.42))
 	_build_shell(ROOM_W, ROOM_D, WALL_H, concrete, wall)
-	# Stair massing from premade woodplanks + pallets (climbable clutter).
-	add_prop("woodplanks", Vector3(-48, 0, 40), 0, 8.0)
-	add_prop("pallet", Vector3(-44, 0, 34), 10, 4.0)
-	add_prop("pallet", Vector3(-40, 1.8, 30), -15, 4.0)
-	add_prop("pallet_broken", Vector3(-36, 0, 26), 40, 3.6)
-	add_prop("brickwall", Vector3(-52, 0, 20), 90, 8.0)
-	add_prop("brickwall", Vector3(-52, 0, 4), 90, 8.0)
+	# Stair massing from premade woodplanks + pallets — kept clear of the brick walls.
+	add_prop("woodplanks", Vector3(-46, 0, 42), 0, 8.0)
+	add_prop("pallet", Vector3(-40, 0, 36), 10, 4.0)
+	add_prop("pallet", Vector3(-36, 1.8, 30), -15, 4.0)
+	add_prop("pallet_broken", Vector3(-32, 0, 24), 40, 3.6)
+	add_prop("brickwall", Vector3(-56, 0, 12), 90, 8.0)
+	add_prop("brickwall", Vector3(-56, 0, -6), 90, 8.0)
 
 func _build_storage_rows() -> void:
 	# Shipping-container aisles.
@@ -94,13 +94,14 @@ func _build_boiler_corner() -> void:
 	add_barrel(Vector3(-24, 0, -24), -60, 2.2, true)
 
 func _build_clutter() -> void:
-	add_prop("tires", Vector3(8, 0, 32), 40, 3.8)
+	add_prop("tires", Vector3(12, 0, 36), 40, 3.8)
 	add_prop("debris_pile", Vector3(-8, 0, -36), 80, 5.5)
 	add_prop("barrier_single", Vector3(0, 0, 0), 25, 3.6)
 	add_prop("barrier_large", Vector3(18, 0, -36), -40, 5.5)
-	add_prop("sign", Vector3(-40, 0, 10), 10, 2.6)
+	add_prop("sign", Vector3(-40, 0, -8), 10, 2.6)
 	add_prop("cone", Vector3(-16, 0, 14), 0, 1.5)
 	add_prop("gascan", Vector3(36, 0, 14), -15, 1.5)
+	add_prop("crate", Vector3(-20, 0, 28), 20, 2.8)
 	Landmine.spawn(self, Vector3(6, 0, -20))
 	Landmine.spawn(self, Vector3(-6, 0, 16))
 	add_dust_motes(Vector3(0, 6, 0), Vector3(40, 5, 35), 40, Color(0.7, 0.72, 0.78))
@@ -120,10 +121,10 @@ func _spawn_units() -> void:
 		mate.position = pos
 	var patrols := [
 		{"route": [Vector3(-16, 1, 10), Vector3(0, 1, 16)], "mix": ["trooper", "roomba_drone"]},
-		{"route": [Vector3(12, 1, -8), Vector3(-8, 1, -12)], "mix": ["tunnel_heavy", "scout"]},
+		{"route": [Vector3(12, 1, -8), Vector3(-8, 1, -12)], "mix": ["tunnel_heavy", "chrome_ant"]},
 		{"route": [Vector3(30, 1, 22), Vector3(40, 1, 28)], "mix": ["tunnel_heavy", "roomba_drone"]},
-		{"route": [Vector3(-30, 1, -24), Vector3(-20, 1, -30)], "mix": ["roomba_drone", "commando"]},
-		{"route": [Vector3(20, 1, -30)], "mix": ["tunnel_heavy", "grenadier"]},
+		{"route": [Vector3(-30, 1, -24), Vector3(-20, 1, -30)], "mix": ["chrome_beetle", "commando"]},
+		{"route": [Vector3(20, 1, -30)], "mix": ["chrome_ant", "grenadier"]},
 	]
 	for patrol in patrols:
 		var route: Array = patrol.route
@@ -155,11 +156,14 @@ func _spawn_pickups_and_toys() -> void:
 
 func _start_mission() -> void:
 	Missions.start_mission("ACT 4 — UNDER THE STAIRS")
+	Missions.add_objective("rescue", "Rescue the basement crew  [E]", 2)
 	Missions.add_objective("barrels", "Detonate the basement fuel dumps", 5)
 	Missions.add_objective("toys", "Recover the lost toys in the dark", 3)
 	Missions.add_objective("drones", "Scrap the Chrome roomba drones", 3)
 	Missions.marker_provider = func(id: String) -> Vector3:
 		match id:
+			"rescue":
+				return nearest_in_group("green_allies", func(n): return n is SquadMate and n.captive)
 			"barrels":
 				return nearest_in_group("explosive_barrels")
 			"toys":

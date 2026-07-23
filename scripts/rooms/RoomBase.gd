@@ -256,16 +256,21 @@ func _setup_desk_collision(rig: Node3D) -> void:
 
 ## AABB box collider on a ModelLib prop already parented somewhere (table clutter).
 ## Thin imported fences/signs get a minimum thickness so the capsule cannot
-## tunnel through a 0.1u plane.
+## tunnel through a 0.1u plane. Colliders are floor-grounded (y=0 → top) so
+## short/offset meshes still block walking instead of floating as a thin slab.
 func _setup_prop_collision(rig: Node3D, min_thickness: float = 0.95) -> void:
 	if rig == null or not rig.has_meta("aabb"):
 		return
 	var aabb: AABB = rig.get_meta("aabb")
 	var size := Vector3(
 		maxf(aabb.size.x, min_thickness),
-		maxf(aabb.size.y, 0.4),
+		maxf(aabb.size.y, 1.35),
 		maxf(aabb.size.z, min_thickness))
-	var center := aabb.position + aabb.size * 0.5
+	# Keep XZ centered on the mesh; pin Y so the hull sits on the floor.
+	var center := Vector3(
+		aabb.position.x + aabb.size.x * 0.5,
+		size.y * 0.5,
+		aabb.position.z + aabb.size.z * 0.5)
 	var body := StaticBody3D.new()
 	body.collision_layer = 0b0001
 	body.collision_mask = 0
@@ -277,6 +282,18 @@ func _setup_prop_collision(rig: Node3D, min_thickness: float = 0.95) -> void:
 	cs.position = center
 	body.add_child(cs)
 	rig.add_child(body)
+
+## Walkable climb ramp: thicker than a magazine/towel visual so capsules
+## cannot skim through the thin axis when the board is steeply tilted.
+func _climb_ramp(pos: Vector3, size: Vector3, mat: Material,
+		rot_deg: Vector3 = Vector3.ZERO) -> StaticBody3D:
+	var thick := Vector3(maxf(size.x, 2.4), maxf(size.y, 2.4), maxf(size.z, 2.4))
+	# Keep the long axis; only inflate the thin slab dimension(s).
+	if size.y <= size.x and size.y <= size.z:
+		thick = Vector3(size.x, maxf(size.y, 2.4), size.z)
+	var body := _static_box(pos, thick, mat)
+	body.rotation_degrees = rot_deg
+	return body
 
 ## Kenney toilet: seat deck flush with the mesh seat (~44% height), tank at rear.
 func _setup_toilet_collision(rig: Node3D) -> void:

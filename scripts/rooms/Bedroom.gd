@@ -134,9 +134,8 @@ func _build_bed_fortress() -> void:
 	# Pillows are VISUAL only — colliding cushions used to swallow the player.
 	_deco_box(bed_pos + Vector3(0, 11.6, -16), Vector3(26, 3.2, 10), pillow, true)
 	_deco_box(bed_pos + Vector3(-7, 13.6, -18), Vector3(12, 2.6, 7), pillow, true)
-	# Blanket ramp: the route up the fortress.
-	var ramp := _static_box(bed_pos + Vector3(23, 4.6, 12), Vector3(14, 1.5, 16), blanket)
-	ramp.rotation_degrees.z = -30.0
+	# Blanket ramp: clear of the mattress side — thick enough to stand on.
+	_climb_ramp(bed_pos + Vector3(28, 5.0, 14), Vector3(14, 1.5, 18), blanket, Vector3(0, 0, -28.0))
 
 # =========================================================================
 #  DESK COMMAND CENTER — northeast. High ground reached via cable/books.
@@ -161,11 +160,11 @@ func _build_desk_command_center() -> void:
 	screen.material_override = ToyMaterials.glow(Color(0.3, 0.8, 0.6), 1.4)
 	screen.position = desk_pos + Vector3(0, 21.5, -5)
 	add_child(screen)
-	# Book staircase up to the desk.
+	# Book staircase west of the desk — not through the side panels.
 	var colors := [Color(0.7, 0.25, 0.2), Color(0.2, 0.4, 0.65), Color(0.75, 0.6, 0.2), Color(0.3, 0.55, 0.3)]
 	for i in 5:
 		var h := 3.5 * (i + 1)
-		_static_box(desk_pos + Vector3(-22 + i * -4.2, h - 1.75, 10 - i * 1.5), Vector3(9, 3.5, 12), ToyMaterials.plastic(colors[i % colors.size()], 0.6))
+		_static_box(desk_pos + Vector3(-28 + i * -3.8, h - 1.75, 14 - i * 1.2), Vector3(9, 3.5, 11), ToyMaterials.plastic(colors[i % colors.size()], 0.6))
 
 # =========================================================================
 #  BOOKSHELF CLIFFS — north wall. Vertical terrain.
@@ -179,8 +178,8 @@ func _build_bookshelf_cliffs() -> void:
 	else:
 		_static_box(shelf_pos + Vector3(0, 20, 0), Vector3(28, 40, 7), ToyMaterials.wood(Color(0.45, 0.32, 0.2)))
 	# One fallen book leaning against the shelf = floor cover.
-	var fallen := _static_box(shelf_pos + Vector3(-20, 3.6, 8), Vector3(7, 1.2, 18), ToyMaterials.plastic(Color(0.6, 0.5, 0.25), 0.7))
-	fallen.rotation_degrees.x = -24.0
+	_climb_ramp(shelf_pos + Vector3(-24, 4.0, 12), Vector3(7, 1.2, 20),
+		ToyMaterials.plastic(Color(0.6, 0.5, 0.25), 0.7), Vector3(-22.0, 0, 0))
 
 # =========================================================================
 #  LEGO CITY — center-east. Brick Kingdom's neutral outpost. Great cover.
@@ -244,7 +243,7 @@ func _build_scattered_props() -> void:
 		block.rotation_degrees.y = rng.randf_range(0, 90)
 	# Pencils — long thin cover.
 	for i in 5:
-		var pencil := _static_box(Vector3(rng.randf_range(-45, 45), 0.6, rng.randf_range(-40, 42)), Vector3(1.2, 1.2, 14), ToyMaterials.plastic(Color(0.95, 0.7, 0.15), 0.5))
+		var pencil := _static_box(Vector3(rng.randf_range(-45, 45), 1.1, rng.randf_range(-40, 42)), Vector3(2.2, 2.2, 14), ToyMaterials.plastic(Color(0.85, 0.6, 0.15), 0.5))
 		pencil.rotation_degrees.y = rng.randf_range(0, 180)
 	# Asset-pack battlefield dressing: the toys have dug in for a long war.
 	# Sandbag trenches guard approaches; crates and boxes are supply lines.
@@ -343,10 +342,10 @@ func _spawn_units() -> void:
 	# Chrome patrols guarding routes and camp. Each route pairs a variant mix
 	# so fights feel different: scouts harass, the camp fields a heavy.
 	var patrols := [
-		{"route": [Vector3(0, 1, 0), Vector3(12, 1, -14), Vector3(-8, 1, -18)], "mix": ["trooper", "scout"]},
-		{"route": [Vector3(24, 1, -12), Vector3(34, 1, 2), Vector3(14, 1, 4)], "mix": ["trooper", "scout"]},
+		{"route": [Vector3(0, 1, 0), Vector3(12, 1, -14), Vector3(-8, 1, -18)], "mix": ["trooper", "chrome_ant"]},
+		{"route": [Vector3(24, 1, -12), Vector3(34, 1, 2), Vector3(14, 1, 4)], "mix": ["trooper", "chrome_beetle"]},
 		{"route": [Vector3(38, 1, -18), Vector3(50, 1, -34), Vector3(28, 1, -40)], "mix": ["heavy", "trooper"]},
-		{"route": [Vector3(-14, 1, -34), Vector3(4, 1, -40), Vector3(-2, 1, -26)], "mix": ["sniper", "trooper"]},
+		{"route": [Vector3(-14, 1, -34), Vector3(4, 1, -40), Vector3(-2, 1, -26)], "mix": ["sniper", "chrome_ant"]},
 	]
 	for patrol in patrols:
 		var route: Array = patrol.route

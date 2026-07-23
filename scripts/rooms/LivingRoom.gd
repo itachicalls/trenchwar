@@ -90,20 +90,17 @@ func _build_couch_mountains() -> void:
 		_landmark_deck(couch, 0.78, 1.4)   # firm top plate matching the mesh AABB
 	else:
 		_static_box(Vector3(0, 5, couch_z), Vector3(80, 10, 22), ToyMaterials.soft(Color(0.35, 0.42, 0.55)))
-	# Fallen-magazine ramp up onto the seat deck. Sized so the low end rests
-	# on the floor and the high end actually meets the seat (y=14) — the old
-	# one stopped short mid-air and read as a floating white beam.
-	# On the EAST armrest — parked at the west end it loomed across the
-	# player's entire spawn sightline like a wall.
-	var ramp := _static_box(Vector3(50, 7.2, couch_z + 24), Vector3(9, 1.4, 28), ToyMaterials.plastic(Color(0.92, 0.9, 0.84), 0.55))
-	ramp.rotation_degrees.x = -30.0
-	# Glossy cover art stripe so it reads as a magazine, not a plank.
+	# Fallen-magazine ramp onto the EAST armrest — clear of the coffee table
+	# and couch mass (old placement clipped through furniture legs).
+	var ramp := _climb_ramp(Vector3(48, 7.0, couch_z + 28), Vector3(9, 1.4, 26),
+		ToyMaterials.plastic(Color(0.88, 0.86, 0.8), 0.55), Vector3(-28.0, 0, 0))
+	# Cover art stripe so it reads as a magazine, not a plank.
 	var cover := MeshInstance3D.new()
 	var cover_mesh := BoxMesh.new()
-	cover_mesh.size = Vector3(8.6, 0.15, 12)
+	cover_mesh.size = Vector3(8.2, 0.15, 11)
 	cover.mesh = cover_mesh
 	cover.material_override = ToyMaterials.plastic(Color(0.85, 0.3, 0.25), 0.2)
-	cover.position = Vector3(0, 0.75, 6)
+	cover.position = Vector3(0, 1.3, 5)
 	ramp.add_child(cover)
 	# A dropped TV remote on the seat deck: future secret interaction.
 	_static_box(Vector3(0, 14.8, couch_z + 4), Vector3(3, 1.2, 8), ToyMaterials.plastic(Color(0.12, 0.12, 0.14)))
@@ -132,10 +129,10 @@ func _build_coffee_table_plateau() -> void:
 	coaster.material_override = ToyMaterials.plastic(Color(0.75, 0.3, 0.25), 0.6)
 	coaster.position = Vector3(-12, 16.2, 0)
 	add_child(coaster)
-	# Stacked-book staircase up to the plateau.
+	# Stacked-book staircase — east of the table legs so books don't clip wood.
 	var colors := [Color(0.25, 0.45, 0.6), Color(0.7, 0.55, 0.2), Color(0.5, 0.3, 0.5)]
 	for i in 4:
-		_static_box(Vector3(28 + i * 4.5, 1.9 + i * 3.8, 14 - i * 2.0), Vector3(10, 3.8, 14), ToyMaterials.plastic(colors[i % colors.size()], 0.65))
+		_static_box(Vector3(34 + i * 4.2, 1.9 + i * 3.8, 16 - i * 1.6), Vector3(10, 3.8, 12), ToyMaterials.plastic(colors[i % colors.size()], 0.65))
 
 # =========================================================================
 #  TV COMMAND CENTER — south wall. Chrome-occupied high-value ground.
@@ -161,8 +158,8 @@ func _build_tv_command_center() -> void:
 	add_child(glow)
 	# Game console + cables spilling off the cabinet = climbable route.
 	_static_box(Vector3(-20, 17.5, center_z - 2), Vector3(10, 3, 8), ToyMaterials.porcelain(Color(0.76, 0.78, 0.8), 0.5))
-	var cable := _static_box(Vector3(-28, 6.5, center_z - 14), Vector3(2.4, 1.6, 26), ToyMaterials.plastic(Color(0.1, 0.1, 0.12), 0.5))
-	cable.rotation_degrees.x = -28.0
+	_climb_ramp(Vector3(-32, 7.0, center_z - 18), Vector3(2.6, 2.2, 28),
+		ToyMaterials.plastic(Color(0.1, 0.1, 0.12), 0.5), Vector3(-26.0, 0, 0))
 
 # =========================================================================
 #  RUG BATTLEFIELD + PROPS — the open middle ground.
@@ -209,7 +206,7 @@ func _build_rug_and_props() -> void:
 		cup.position = Vector3(rng.randf_range(-40, 40), 0, rng.randf_range(-25, 30))
 		add_child(cup)
 	for i in 8:
-		var crayon := _static_box(Vector3(rng.randf_range(-50, 50), 0.7, rng.randf_range(-30, 35)), Vector3(1.4, 1.4, 10), ToyMaterials.plastic(Color(rng.randf_range(0.4, 1.0), rng.randf_range(0.2, 0.8), rng.randf_range(0.2, 0.8)), 0.6))
+		var crayon := _static_box(Vector3(rng.randf_range(-50, 50), 1.1, rng.randf_range(-30, 35)), Vector3(2.2, 2.2, 10), ToyMaterials.plastic(Color(rng.randf_range(0.4, 1.0), rng.randf_range(0.2, 0.8), rng.randf_range(0.2, 0.8)), 0.6))
 		crayon.rotation_degrees.y = rng.randf_range(0, 180)
 	# The slipper: a soft bunker near spawn.
 	_static_box(Vector3(-52, 2, 18), Vector3(9, 4, 20), ToyMaterials.soft(Color(0.55, 0.4, 0.45)), true)
@@ -281,11 +278,11 @@ func _spawn_units() -> void:
 	# Chrome patrols: rug sweeps, TV center garrison, couch ridge lookouts.
 	# The TV garrison fields a heavy; a sniper overwatches from the couch ridge.
 	var patrols := [
-		{"route": [Vector3(-20, 1, 0), Vector3(10, 1, -10), Vector3(0, 1, 15)], "mix": ["trooper", "scout"]},
-		{"route": [Vector3(30, 1, 10), Vector3(45, 1, -15), Vector3(20, 1, -20)], "mix": ["scout", "trooper"]},
+		{"route": [Vector3(-20, 1, 0), Vector3(10, 1, -10), Vector3(0, 1, 15)], "mix": ["trooper", "chrome_ant"]},
+		{"route": [Vector3(30, 1, 10), Vector3(45, 1, -15), Vector3(20, 1, -20)], "mix": ["scout", "chrome_beetle"]},
 		{"route": [Vector3(15, 1, 38), Vector3(-18, 1, 40), Vector3(0, 1, 28)], "mix": ["heavy", "trooper"]},
 		{"route": [Vector3(-35, 1, -20), Vector3(-10, 1, -18), Vector3(-30, 1, -12)], "mix": ["trooper", "scout"]},
-		{"route": [Vector3(50, 1, 35), Vector3(58, 1, 12), Vector3(40, 1, 25)], "mix": ["heavy", "sniper"]},
+		{"route": [Vector3(50, 1, 35), Vector3(58, 1, 12), Vector3(40, 1, 25)], "mix": ["heavy", "chrome_ant"]},
 		# Coffee-table overwatch — Y is a hint; EnemySoldier settles onto the deck.
 		{"route": [Vector3(-10, 18, 4), Vector3(10, 18, -4), Vector3(0, 18, 6)], "mix": ["sniper", "scout"]},
 	]
@@ -346,12 +343,15 @@ func _spawn_pickups_and_toys() -> void:
 func _start_mission() -> void:
 	Missions.start_mission("ACT 1 — RUG BURN")
 	Missions.add_objective("rescue", "Rescue the pinned-down squad  [E]", 3)
+	Missions.add_objective("barrels", "Torch the rug fuel barrels", 3)
 	Missions.add_objective("pods", "Destroy the Chrome outpost pods", 2)
 	Missions.add_objective("filters", "??? — something sleeps in the closet", 3)
 	Missions.marker_provider = func(id: String) -> Vector3:
 		match id:
 			"rescue":
 				return nearest_in_group("green_allies", func(n): return n is SquadMate and n.captive)
+			"barrels":
+				return nearest_in_group("explosive_barrels")
 			"pods":
 				return nearest_in_group("chrome_pods")
 			"filters":

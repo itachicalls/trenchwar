@@ -300,12 +300,12 @@ func _spawn_units() -> void:
 		mate.position = pos
 
 	var patrols := [
-		{"route": [Vector3(-24, 1, 8), Vector3(-6, 1, 20), Vector3(-30, 1, 26)], "mix": ["trooper", "scout"]},
+		{"route": [Vector3(-24, 1, 8), Vector3(-6, 1, 20), Vector3(-30, 1, 26)], "mix": ["trooper", "chrome_ant"]},
 		{"route": [Vector3(6, 1, -14), Vector3(24, 1, -4), Vector3(14, 1, -28)], "mix": ["trooper", "heavy"]},   # trench line
-		{"route": [Vector3(36, 1, -14), Vector3(48, 1, -28), Vector3(28, 1, -22)], "mix": ["heavy", "trooper"]},
+		{"route": [Vector3(36, 1, -14), Vector3(48, 1, -28), Vector3(28, 1, -22)], "mix": ["heavy", "chrome_beetle"]},
 		{"route": [Vector3(56, 1, -32)], "mix": ["heavy", "sniper"]},                                            # HQ guards
-		{"route": [Vector3(-38, 1, -50), Vector3(-14, 1, -56), Vector3(-30, 1, -38)], "mix": ["scout", "scout"]},
-		{"route": [Vector3(50, 2, 30), Vector3(38, 2, 40), Vector3(56, 2, 42)], "mix": ["trooper", "scout"]},    # sandbox
+		{"route": [Vector3(-38, 1, -50), Vector3(-14, 1, -56), Vector3(-30, 1, -38)], "mix": ["chrome_ant", "scout"]},
+		{"route": [Vector3(50, 2, 30), Vector3(38, 2, 40), Vector3(56, 2, 42)], "mix": ["trooper", "chrome_beetle"]},    # sandbox
 		{"route": [Vector3(-20, 4.6, -24)], "mix": ["sniper", "trooper"]},                                       # molehill overwatch
 		{"route": [Vector3(64, 1, 6), Vector3(74, 1, -10), Vector3(58, 1, -4)], "mix": ["scout", "trooper"]},    # fence-hole watch
 	]

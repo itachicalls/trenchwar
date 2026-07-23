@@ -143,8 +143,8 @@ func _build_the_car() -> void:
 	var spare := _static_cylinder(car + Vector3(-30, 4, 26), 5.5, 8.0, rubber)
 	spare.name = "SpareTires"
 	# Dangling exhaust pipe = ramp toward the rear bumper.
-	var pipe := _static_box(car + Vector3(34, 8, 18), Vector3(3, 1.8, 24), ToyMaterials.metal(Color(0.6, 0.62, 0.66), 0.5))
-	pipe.rotation_degrees.x = -32.0
+	_climb_ramp(car + Vector3(38, 8, 22), Vector3(3, 2.2, 26),
+		ToyMaterials.metal(Color(0.6, 0.62, 0.66), 0.5), Vector3(-28.0, 0, 0))
 
 # =========================================================================
 #  WORKBENCH MESA — west wall. The Green staging ground, bulb-lit.
@@ -163,8 +163,8 @@ func _build_workbench_mesa() -> void:
 	_static_box(bench + Vector3(-12, 23.6, -4), Vector3(8, 5, 6), ToyMaterials.metal(Color(0.45, 0.5, 0.55), 0.4))
 	_static_box(bench + Vector3(10, 23.4, 2), Vector3(12, 4.5, 7), ToyMaterials.plastic(Color(0.75, 0.2, 0.15), 0.4))
 	# Hanging extension cord = the climb (draped from bench to floor).
-	var cord := _static_box(bench + Vector3(24, 10, 12), Vector3(2.2, 1.6, 26), ToyMaterials.plastic(Color(0.9, 0.55, 0.1), 0.5))
-	cord.rotation_degrees.x = -42.0
+	_climb_ramp(bench + Vector3(28, 10, 16), Vector3(2.4, 2.2, 28),
+		ToyMaterials.plastic(Color(0.85, 0.5, 0.12), 0.5), Vector3(-36.0, 0, 0))
 
 	# Washer in the far northwest corner, dryer against the east wall.
 	var washer := add_landmark("washing_machine", Vector3(-70, 0, -52), 90, 16.0)
@@ -189,8 +189,8 @@ func _build_shelf_cliffs() -> void:
 		for i in 4:
 			_static_cylinder(shelf + Vector3(-15 + i * 10.0, y + 4.4, 0), 3.0, 7.0, ToyMaterials.metal(paint_colors[(level + i) % paint_colors.size()], 0.3))
 	# A fallen broom leaning on the first shelf = the climb route.
-	var broom := _static_box(shelf + Vector3(-30, 6.5, 10), Vector3(2, 1.6, 26), ToyMaterials.wood(Color(0.62, 0.45, 0.28)))
-	broom.rotation_degrees.x = -30.0
+	_climb_ramp(shelf + Vector3(-34, 6.5, 14), Vector3(2.4, 2.2, 28),
+		ToyMaterials.wood(Color(0.62, 0.45, 0.28)), Vector3(-28.0, 0, 0))
 
 # =========================================================================
 #  ARMOR DEPOT — northeast corner. Chrome's vehicle yard: the objective.
@@ -277,13 +277,13 @@ func _spawn_units() -> void:
 		mate.position = pos
 
 	var patrols := [
-		{"route": [Vector3(-20, 1, 0), Vector3(0, 1, -8), Vector3(-12, 1, 16)], "mix": ["trooper", "scout"]},
+		{"route": [Vector3(-20, 1, 0), Vector3(0, 1, -8), Vector3(-12, 1, 16)], "mix": ["trooper", "chrome_ant"]},
 		{"route": [Vector3(20, 1, -30), Vector3(36, 1, -18), Vector3(14, 1, -40)], "mix": ["heavy", "trooper"]},
-		{"route": [Vector3(40, 1, 20), Vector3(56, 1, 34), Vector3(30, 1, 34)], "mix": ["trooper", "scout"]},
-		{"route": [Vector3(-40, 1, -44), Vector3(-16, 1, -50), Vector3(-30, 1, -34)], "mix": ["scout", "sniper"]},
+		{"route": [Vector3(40, 1, 20), Vector3(56, 1, 34), Vector3(30, 1, 34)], "mix": ["trooper", "chrome_beetle"]},
+		{"route": [Vector3(-40, 1, -44), Vector3(-16, 1, -50), Vector3(-30, 1, -34)], "mix": ["chrome_ant", "sniper"]},
 		{"route": [Vector3(-4, 40.2, -ROOM_D / 2 + 10), Vector3(12, 40.2, -ROOM_D / 2 + 10)], "mix": ["sniper", "trooper"]},   # shelf top
 		{"route": [Vector3(48, 1, -36)], "mix": ["juggernaut", "heavy"]},   # depot guards
-		{"route": [Vector3(-52, 1, 44), Vector3(-30, 1, 50), Vector3(-44, 1, 34)], "mix": ["trooper", "trooper"]},
+		{"route": [Vector3(-52, 1, 44), Vector3(-30, 1, 50), Vector3(-44, 1, 34)], "mix": ["trooper", "chrome_beetle"]},
 	]
 	for patrol in patrols:
 		var route: Array = patrol.route

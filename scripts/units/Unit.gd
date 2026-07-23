@@ -55,7 +55,12 @@ func _ready() -> void:
 	# Floating health bar for AI units (the player has the HUD).
 	if not self is Player:
 		health_bar = HealthBar3D.new()
-		health_bar.position.y = 1.85
+		var bar_y := 1.85
+		if bp.get("prop_unit", "").begins_with("insect_"):
+			bar_y = float(bp.get("prop_size", 1.5)) * 0.75 + 0.35
+		elif bp.get("prop_unit", "") != "":
+			bar_y = float(bp.get("prop_size", 2.0)) * 0.55 + 0.4
+		health_bar.position.y = bar_y
 		add_child(health_bar)
 		health.changed.connect(func(c, m): health_bar.update_ratio(c / m))
 	_unit_ready()

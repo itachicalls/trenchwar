@@ -141,13 +141,14 @@ func _build_sock_dunes() -> void:
 # =========================================================================
 func _build_supply_shelf() -> void:
 	var wood := ToyMaterials.wood(Color(0.42, 0.3, 0.2))
-	# Low shelf: walkable sniper deck reached from the dryer-box stack.
+	# Low shelf: walkable sniper deck; posts inset so climb props don't clip them.
 	_static_box(Vector3(ROOM_W / 2 - 8, 14, 10), Vector3(12, 1.6, 60), wood)
-	for z in [-16.0, 34.0]:
+	for z in [-18.0, 36.0]:
 		_static_box(Vector3(ROOM_W / 2 - 8, 7, z), Vector3(3, 14, 3), wood)
-	# Climb: stacked cardboard boxes (real props).
-	add_prop("cardboard_1", Vector3(ROOM_W / 2 - 14, 0, 42), -15.0, 7.0)
-	add_prop("cardboard_2", Vector3(ROOM_W / 2 - 9, 4.8, 38), 30.0, 5.5)
+	# Climb: stacked cardboard clear of the south post.
+	add_prop("cardboard_1", Vector3(ROOM_W / 2 - 18, 0, 28), -15.0, 7.0)
+	add_prop("cardboard_2", Vector3(ROOM_W / 2 - 14, 4.8, 24), 30.0, 5.5)
+	add_prop("crate", Vector3(ROOM_W / 2 - 20, 0, 20), 40.0, 3.2)
 	# Corner water heater = the watertank prop, big.
 	add_prop("watertank", Vector3(-ROOM_W / 2 + 14, 0, -ROOM_D / 2 + 14), 15.0, 18.0)
 	add_prop("pipes", Vector3(-ROOM_W / 2 + 10, 0, -ROOM_D / 2 + 30), 90.0, 7.0)
@@ -199,9 +200,9 @@ func _spawn_units() -> void:
 
 	# Garrison: pump guards + shelf sniper + roaming patrols.
 	var patrols := [
-		{"route": [Vector3(-20, 1, -20), Vector3(14, 1, -26), Vector3(0, 1, -10)], "mix": ["commando", "trooper"]},
-		{"route": [Vector3(28, 1, 20), Vector3(44, 1, -2), Vector3(20, 1, 0)], "mix": ["heavy", "scout"]},
-		{"route": [Vector3(-44, 1, 4), Vector3(-24, 1, -8), Vector3(-36, 1, 22)], "mix": ["trooper", "grenadier"]},
+		{"route": [Vector3(-20, 1, -20), Vector3(14, 1, -26), Vector3(0, 1, -10)], "mix": ["commando", "chrome_ant"]},
+		{"route": [Vector3(28, 1, 20), Vector3(44, 1, -2), Vector3(20, 1, 0)], "mix": ["heavy", "chrome_beetle"]},
+		{"route": [Vector3(-44, 1, 4), Vector3(-24, 1, -8), Vector3(-36, 1, 22)], "mix": ["trooper", "chrome_ant"]},
 	]
 	for patrol in patrols:
 		var route: Array[Vector3] = []

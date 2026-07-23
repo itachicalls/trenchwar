@@ -141,27 +141,28 @@ func _build_tub_fortress() -> void:
 	else:
 		_static_box(tub + Vector3(0, 7, -14), Vector3(44, 14, 4), porcelain)
 		_static_box(tub + Vector3(0, 7, 14), Vector3(44, 14, 4), porcelain)
-	# Towel draped over the rim = the ramp up.
-	var towel := _static_box(tub + Vector3(14, 7.0, 15.5), Vector3(12, 1.4, 17), ToyMaterials.soft(Color(0.75, 0.55, 0.6)))
-	towel.rotation_degrees.x = -42.0
+	# Towel ramp: approach from the open floor (+Z), meet the rim — not through the tub walls.
+	_climb_ramp(tub + Vector3(18, 7.2, 22), Vector3(12, 1.4, 20),
+		ToyMaterials.soft(Color(0.75, 0.55, 0.6)), Vector3(-34.0, 0, 0))
 
-	# The rubber duck: rotund guardian on the rim, pure landmark joy.
-	var duck_body := _static_box(tub + Vector3(-8, 18.5, -9.5), Vector3(9, 6, 7), ToyMaterials.plastic(Color(0.98, 0.82, 0.1), 0.15), true)
+	# Rubber duck on the rim — matte yellow so it doesn't bloom into giant suns.
+	var duck_mat := ToyMaterials.plastic(Color(0.82, 0.68, 0.12), 0.45)
+	var duck_body := _static_box(tub + Vector3(-8, 17.2, -9.5), Vector3(6.5, 4.5, 5.2), duck_mat, true)
 	duck_body.name = "RubberDuck"
 	var duck_head := MeshInstance3D.new()
 	var dh := SphereMesh.new()
-	dh.radius = 2.6
-	dh.height = 5.2
+	dh.radius = 1.9
+	dh.height = 3.8
 	duck_head.mesh = dh
-	duck_head.material_override = ToyMaterials.plastic(Color(0.98, 0.82, 0.1), 0.15)
-	duck_head.position = tub + Vector3(-11.5, 23.3, -9.5)
+	duck_head.material_override = duck_mat
+	duck_head.position = tub + Vector3(-10.5, 20.6, -9.5)
 	add_child(duck_head)
 	var beak := MeshInstance3D.new()
 	var bm := BoxMesh.new()
-	bm.size = Vector3(3.2, 1.4, 2.2)
+	bm.size = Vector3(2.4, 1.1, 1.6)
 	beak.mesh = bm
-	beak.material_override = ToyMaterials.plastic(Color(0.95, 0.5, 0.1), 0.3)
-	beak.position = tub + Vector3(-14.5, 22.7, -9.5)
+	beak.material_override = ToyMaterials.plastic(Color(0.8, 0.42, 0.12), 0.4)
+	beak.position = tub + Vector3(-12.8, 20.2, -9.5)
 	add_child(beak)
 
 	# Puddle of "water" on the raised interior floor: glowing, harmless, pretty.
@@ -189,10 +190,10 @@ func _build_toilet_tower() -> void:
 		_setup_toilet_collision(toilet)
 	else:
 		_static_cylinder(base + Vector3(0, 8, 0), 8.0, 16.0, ToyMaterials.porcelain())
-	# Plunger ramp: handle leaning against the bowl = the climb.
-	var handle := _static_box(base + Vector3(-10, 6.5, 10), Vector3(1.8, 1.8, 22), ToyMaterials.wood(Color(0.6, 0.42, 0.25)))
-	handle.rotation_degrees.x = -36.0
-	var cup := _static_box(base + Vector3(-10, 1.2, 19), Vector3(5, 2.4, 5), ToyMaterials.plastic(Color(0.6, 0.25, 0.3), 0.4), true)
+	# Plunger ramp: thick handle clear of the bowl pedestal.
+	_climb_ramp(base + Vector3(-14, 6.8, 14), Vector3(2.2, 2.2, 24),
+		ToyMaterials.wood(Color(0.6, 0.42, 0.25)), Vector3(-32.0, 0, 0))
+	var cup := _static_box(base + Vector3(-14, 1.2, 24), Vector3(5, 2.4, 5), ToyMaterials.plastic(Color(0.6, 0.25, 0.3), 0.4), true)
 	cup.name = "PlungerCup"
 
 # =========================================================================
@@ -210,9 +211,9 @@ func _build_sink_cabinet() -> void:
 	# Toothbrush cup + soap on the counter: sniper cover up top.
 	_static_box(Vector3(-44, 28.5, z), Vector3(5, 7, 5), ToyMaterials.plastic(Color(0.4, 0.65, 0.85), 0.3), true)
 	_static_box(Vector3(-24, 27, z - 4), Vector3(8, 2.4, 5), ToyMaterials.plastic(Color(0.9, 0.6, 0.7), 0.25), true)
-	# Hanging towel = the ramp onto the counter.
-	var towel := _static_box(Vector3(-10, 13, z + 12), Vector3(10, 1.4, 22), ToyMaterials.soft(Color(0.55, 0.68, 0.6)))
-	towel.rotation_degrees.x = -42.0
+	# Hanging towel = ramp onto the counter front (+Z). Kept clear of the legs.
+	_climb_ramp(Vector3(-28, 12.5, z + 24), Vector3(14, 1.4, 28),
+		ToyMaterials.soft(Color(0.55, 0.68, 0.6)), Vector3(-34.0, 0, 0))
 
 	# A giant pedestal sink guards the far corner (real model, solid).
 	var sink := add_landmark("sink", Vector3(48, 0, -12), -90, 16.0)
@@ -242,15 +243,16 @@ func _build_scattered_props() -> void:
 	add_prop("sacktrench_small", Vector3(-4, 0, 18), 45, 4.5)
 	add_prop("barrier_large", Vector3(12, 0, -32), 15, 5.2)
 	add_prop("barrier_single", Vector3(-24, 0, 30), -60, 3.6)
-	add_prop("crate", Vector3(40, 0, 14), 25, 3.0)
-	add_prop("crate", Vector3(43, 0, 17), -30, 2.5)
+	# Keep crates/tires off the sink legs and each other.
+	add_prop("crate", Vector3(28, 0, 18), 25, 3.0)
+	add_prop("crate", Vector3(8, 0, -34), -30, 2.5)
 	add_barrel(Vector3(-2, 0, -36), 0, 1.8)
 	add_barrel(Vector3(2, 0, -38.6), 70, 2.2, true)
-	add_prop("pipes", Vector3(-48, 0, 8), 30, 4.6)
-	add_prop("cardboard_1", Vector3(46, 0, -10), -35, 4.8)
+	add_prop("pipes", Vector3(-48, 0, 18), 30, 4.6)
+	add_prop("cardboard_1", Vector3(38, 0, 28), -35, 4.8)
 	add_prop("pallet", Vector3(14, 0, 14), 55, 3.2)
 	add_prop("cone", Vector3(30, 0, -6), 0, 1.6)
-	add_prop("tires", Vector3(-16, 0, -30), 40, 3.4)
+	add_prop("tires", Vector3(20, 0, 36), 40, 3.4)
 	Landmine.spawn(self, Vector3(-30, 0, -14))
 	Landmine.spawn(self, Vector3(-40, 0, -20))
 
@@ -280,12 +282,12 @@ func _spawn_units() -> void:
 		mate.position = pos
 
 	var patrols := [
-		{"route": [Vector3(8, 1, -8), Vector3(-8, 1, 4), Vector3(12, 1, 10)], "mix": ["scout", "scout"]},
-		{"route": [Vector3(-16, 1, -22), Vector3(-36, 1, -12), Vector3(-20, 1, -34)], "mix": ["trooper", "heavy"]},
-		{"route": [Vector3(28, 1, -20), Vector3(40, 1, -6), Vector3(20, 1, -30)], "mix": ["trooper", "scout"]},
+		{"route": [Vector3(8, 1, -8), Vector3(-8, 1, 4), Vector3(12, 1, 10)], "mix": ["scout", "chrome_ant"]},
+		{"route": [Vector3(-16, 1, -22), Vector3(-36, 1, -12), Vector3(-20, 1, -34)], "mix": ["trooper", "chrome_beetle"]},
+		{"route": [Vector3(28, 1, -20), Vector3(40, 1, -6), Vector3(20, 1, -30)], "mix": ["chrome_ant", "scout"]},
 		{"route": [Vector3(-20, 18, 8.5), Vector3(-44, 18, 8.5)], "mix": ["sniper", "trooper"]},   # tub rim
 		{"route": [Vector3(34, 19, -28)], "mix": ["sniper", "heavy"]},                             # toilet seat
-		{"route": [Vector3(-6, 1, 30), Vector3(14, 1, 38), Vector3(28, 1, 30)], "mix": ["trooper", "trooper"]},
+		{"route": [Vector3(-6, 1, 30), Vector3(14, 1, 38), Vector3(28, 1, 30)], "mix": ["trooper", "chrome_beetle"]},
 	]
 	for patrol in patrols:
 		var route: Array = patrol.route
@@ -334,28 +336,30 @@ func _spawn_pickups_and_toys() -> void:
 func _start_mission() -> void:
 	Missions.start_mission("ACT 2 — TUB THUMPING")
 	Missions.add_objective("rescue", "Rescue the stranded squad  [E]", 2)
-	Missions.add_objective("toys", "Recover the lost bath toys", 3)
+	Missions.add_objective("snipers", "Silence the porcelain tower snipers", 2)
 	Missions.add_objective("pods", "Destroy the under-sink listening post", 3)
 	Missions.marker_provider = func(id: String) -> Vector3:
 		match id:
 			"rescue":
 				return nearest_in_group("green_allies", func(n): return n is SquadMate and n.captive)
-			"toys":
-				return nearest_in_group("lost_toys")
+			"snipers":
+				return nearest_in_group("enemies", func(n): return n is EnemySoldier and n.variant == "sniper")
 			"pods":
 				return nearest_in_group("chrome_pods")
 		return Vector3.INF
 	Events.notify.emit("Chrome ears under the sink. Scrub this bathroom clean, soldier.")
 
-func _on_unit_died(_unit: Node) -> void:
-	if not _counterattack_sent and Missions.objectives.size() > 2 and Missions.objectives[2].count_done >= 2:
+func _on_unit_died(unit: Node) -> void:
+	if unit is EnemySoldier and unit.variant == "sniper":
+		Missions.progress("snipers")
+	if not _counterattack_sent and Missions.is_done("pods"):
 		_send_counterattack()
 
 func _send_counterattack() -> void:
 	_counterattack_sent = true
 	Events.notify.emit("WARNING: Chrome divers surfacing from the drain!")
 	var chrome: FactionData = load("res://data/factions/chrome_legion.tres")
-	var mix := ["scout", "scout", "heavy", "trooper", "sniper"]
+	var mix := ["chrome_ant", "chrome_beetle", "heavy", "trooper", "sniper"]
 	for i in 5:
 		var enemy := EnemySoldier.new()
 		enemy.faction = chrome

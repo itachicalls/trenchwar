@@ -61,8 +61,8 @@ func _unit_ready() -> void:
 	floor_snap_length = 0.4
 	floor_stop_on_slope = true
 	floor_constant_speed = true
-	floor_max_angle = deg_to_rad(52.0)
-	safe_margin = 0.08
+	floor_max_angle = deg_to_rad(58.0)
+	safe_margin = 0.1
 	# Slightly slimmer capsule so jet cresting clears furniture lips.
 	for c in get_children():
 		if c is CollisionShape3D and c.shape is CapsuleShape3D:

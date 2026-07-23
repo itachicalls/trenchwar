@@ -52,6 +52,15 @@ const VARIANTS := {
 		"health": 130.0, "speed": 7.8, "scale": 1.0, "tint": Color(0.7, 0.85, 1.2),
 		"vision": 16.0, "attack": 11.0, "burst": 5, "pause": 0.55,
 		"prop_unit": "roomba", "prop_size": 2.4},
+	# Toy chrome insect pests — sprinkle with humanoid Chrome for variety.
+	"chrome_beetle": {"gun": "Shotgun", "weapon": "res://data/weapons/chrome_scatter.tres",
+		"health": 110.0, "speed": 6.4, "scale": 1.0, "tint": Color(0.55, 0.75, 1.15),
+		"vision": 14.0, "attack": 9.0, "burst": 2, "pause": 0.85,
+		"prop_unit": "insect_beetle", "prop_size": 1.7},
+	"chrome_ant": {"gun": "Pistol", "weapon": "res://data/weapons/chrome_needler.tres",
+		"health": 70.0, "speed": 9.2, "scale": 1.0, "tint": Color(1.2, 0.55, 0.4),
+		"vision": 16.0, "attack": 10.0, "burst": 3, "pause": 0.45,
+		"prop_unit": "insect_ant", "prop_size": 1.35},
 }
 
 @export var patrol_points: Array[Vector3] = []

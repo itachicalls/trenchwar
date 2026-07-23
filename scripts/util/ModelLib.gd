@@ -59,21 +59,109 @@ static func build_character(faction: FactionData, is_chrome: bool = false,
 	return rig
 
 ## Premade landmark/prop driven as a unit body (roomba drones, etc.).
+## Special names insect_beetle / insect_ant build toy chrome pest molds.
 static func build_prop_unit(prop_or_land: String, target_size: float, tint: Color = Color.WHITE) -> Node3D:
-	var rig := build_landmark(prop_or_land, target_size)
-	if rig == null:
-		rig = build_prop(prop_or_land, target_size)
-	if rig == null:
-		rig = Node3D.new()
-		rig.name = "BodyRig"
+	var rig: Node3D = null
+	if prop_or_land.begins_with("insect_"):
+		rig = build_insect(prop_or_land.trim_prefix("insect_"), target_size, tint)
 	else:
-		rig.name = "BodyRig"
-	if tint != Color.WHITE:
-		_tint(rig, tint, 0.2, 0.5)
+		rig = build_landmark(prop_or_land, target_size)
+		if rig == null:
+			rig = build_prop(prop_or_land, target_size)
+		if rig == null:
+			rig = Node3D.new()
+		elif tint != Color.WHITE:
+			_tint(rig, tint, 0.2, 0.5)
+	rig.name = "BodyRig"
 	var mount := Node3D.new()
 	mount.name = "WeaponMount"
 	mount.position = Vector3(0.0, target_size * 0.35, -target_size * 0.25)
 	rig.add_child(mount)
+	return rig
+
+## Toy-scale chrome pests (beetle / ant). Low-poly capsule molds so levels can
+## sprinkle insect variety beside humanoid Chrome without a separate pack.
+static func build_insect(kind: String, target_size: float, tint: Color = Color.WHITE) -> Node3D:
+	var rig := Node3D.new()
+	var shell := ToyMaterials.metal(Color(0.45, 0.55, 0.62) * tint, 0.28)
+	var dark := ToyMaterials.metal(Color(0.22, 0.26, 0.32) * tint, 0.45)
+	var s := target_size
+	var is_ant := kind == "ant"
+	# Abdomen
+	var abdomen := MeshInstance3D.new()
+	var am := CapsuleMesh.new()
+	am.radius = s * (0.22 if is_ant else 0.28)
+	am.height = s * (0.55 if is_ant else 0.62)
+	abdomen.mesh = am
+	abdomen.material_override = shell
+	abdomen.position = Vector3(0, s * 0.28, s * (0.12 if is_ant else 0.08))
+	abdomen.rotation_degrees.x = 90.0
+	rig.add_child(abdomen)
+	# Thorax
+	var thorax := MeshInstance3D.new()
+	var tm := SphereMesh.new()
+	tm.radius = s * (0.18 if is_ant else 0.22)
+	tm.height = s * (0.32 if is_ant else 0.4)
+	thorax.mesh = tm
+	thorax.material_override = shell
+	thorax.position = Vector3(0, s * 0.3, s * (-0.12 if is_ant else -0.16))
+	rig.add_child(thorax)
+	# Head
+	var head := MeshInstance3D.new()
+	var hm := SphereMesh.new()
+	hm.radius = s * (0.14 if is_ant else 0.16)
+	hm.height = s * (0.26 if is_ant else 0.3)
+	head.mesh = hm
+	head.material_override = dark
+	head.position = Vector3(0, s * 0.32, s * (-0.32 if is_ant else -0.38))
+	rig.add_child(head)
+	# Mandibles / horn
+	for side in [-1.0, 1.0]:
+		var fang := MeshInstance3D.new()
+		var fm := CapsuleMesh.new()
+		fm.radius = s * 0.03
+		fm.height = s * (0.22 if is_ant else 0.18)
+		fang.mesh = fm
+		fang.material_override = dark
+		fang.position = Vector3(side * s * 0.08, s * 0.28, s * (-0.44 if is_ant else -0.5))
+		fang.rotation_degrees = Vector3(55.0, side * 25.0, 0)
+		rig.add_child(fang)
+	# Six legs
+	for i in 3:
+		for side in [-1.0, 1.0]:
+			var leg := MeshInstance3D.new()
+			var lm := CapsuleMesh.new()
+			lm.radius = s * 0.035
+			lm.height = s * 0.42
+			leg.mesh = lm
+			leg.material_override = dark
+			var z := s * (-0.2 + i * 0.16)
+			leg.position = Vector3(side * s * 0.22, s * 0.12, z)
+			leg.rotation_degrees = Vector3(15.0, 0, side * (55.0 + i * 8.0))
+			rig.add_child(leg)
+	if is_ant:
+		# Ant antennae
+		for side in [-1.0, 1.0]:
+			var feeler := MeshInstance3D.new()
+			var atm := CapsuleMesh.new()
+			atm.radius = s * 0.02
+			atm.height = s * 0.35
+			feeler.mesh = atm
+			feeler.material_override = dark
+			feeler.position = Vector3(side * s * 0.06, s * 0.48, s * -0.36)
+			feeler.rotation_degrees = Vector3(-35.0, side * 20.0, 0)
+			rig.add_child(feeler)
+	else:
+		# Beetle wing-case ridge
+		var ridge := MeshInstance3D.new()
+		var rm := BoxMesh.new()
+		rm.size = Vector3(s * 0.04, s * 0.08, s * 0.45)
+		ridge.mesh = rm
+		ridge.material_override = dark
+		ridge.position = Vector3(0, s * 0.42, s * 0.06)
+		rig.add_child(ridge)
+	var mount_y := s * 0.55
+	rig.set_meta("insect_height", mount_y)
 	return rig
 
 ## Environment prop (crates, sandbag trenches, barriers...). Uniformly scaled
@@ -127,16 +215,16 @@ static func build_landmark(land_name: String, target_size: float) -> Node3D:
 	_dampen_bright_materials(model)
 	return rig
 
-## Military toy jetpack: olive twin tanks with amber trim rings, chrome
-## thruster bells with a hot inner glow, a slim armored spine plate and a
-## tail fin. Meta "nozzles" holds the two exhaust Node3Ds for flame FX.
+	## Military toy jetpack: olive twin tanks with muted amber trim rings,
+## chrome thruster bells, and a slim armored spine plate.
+## Meta "nozzles" holds the two exhaust Node3Ds for flame FX.
 static func build_jetpack() -> Node3D:
 	var rig := Node3D.new()
 	rig.name = "Jetpack"
 	var olive := ToyMaterials.plastic(Color(0.32, 0.4, 0.22), 0.35)
 	var olive_dark := ToyMaterials.plastic(Color(0.2, 0.25, 0.15), 0.5)
-	var chrome := ToyMaterials.metal(Color(0.75, 0.78, 0.82), 0.22)
-	var amber := ToyMaterials.plastic(Color(0.9, 0.62, 0.15), 0.3)
+	var chrome := ToyMaterials.metal(Color(0.62, 0.66, 0.7), 0.35)
+	var amber := ToyMaterials.plastic(Color(0.72, 0.5, 0.18), 0.45)
 
 	# Armored spine plate hugging the back.
 	var plate := MeshInstance3D.new()
@@ -178,7 +266,7 @@ static func build_jetpack() -> Node3D:
 		cap.material_override = chrome
 		cap.position = tank.position + Vector3(side * -0.02, 0.28, 0)
 		rig.add_child(cap)
-		# ...chrome thruster bell with a hot orange throat...
+		# ...chrome thruster bell with a warm (non-blooming) throat...
 		var bell := MeshInstance3D.new()
 		var bm := CylinderMesh.new()
 		bm.top_radius = 0.055
@@ -194,7 +282,7 @@ static func build_jetpack() -> Node3D:
 		thm.bottom_radius = 0.075
 		thm.height = 0.05
 		throat.mesh = thm
-		throat.material_override = ToyMaterials.glow(Color(1.0, 0.5, 0.15), 1.4)
+		throat.material_override = ToyMaterials.plastic(Color(0.85, 0.4, 0.12), 0.35)
 		throat.position = bell.position + Vector3(0, -0.05, 0)
 		rig.add_child(throat)
 		var nozzle := Node3D.new()
@@ -202,22 +290,21 @@ static func build_jetpack() -> Node3D:
 		rig.add_child(nozzle)
 		nozzles.append(nozzle)
 
-	# Center tail fin between the tanks: makes the silhouette read "rocket".
-	var fin := MeshInstance3D.new()
-	var fm := PrismMesh.new()
-	fm.size = Vector3(0.05, 0.3, 0.16)
-	fin.mesh = fm
-	fin.material_override = amber
-	fin.position = Vector3(0, 0.1, 0.2)
-	fin.rotation_degrees = Vector3(-90, 0, 0)
-	rig.add_child(fin)
-	# Fuel window: small emissive slot on the spine plate, low center.
+	# Cross-brace between tanks (no yellow prism fin — that read as broken geo).
+	var brace := MeshInstance3D.new()
+	var bm2 := BoxMesh.new()
+	bm2.size = Vector3(0.22, 0.06, 0.05)
+	brace.mesh = bm2
+	brace.material_override = olive_dark
+	brace.position = Vector3(0, 0.02, 0.14)
+	rig.add_child(brace)
+	# Fuel gauge: recessed matte slot, not an emissive lamp.
 	var window := MeshInstance3D.new()
 	var wm := BoxMesh.new()
-	wm.size = Vector3(0.1, 0.16, 0.02)
+	wm.size = Vector3(0.1, 0.14, 0.02)
 	window.mesh = wm
-	window.material_override = ToyMaterials.glow(Color(1.0, 0.72, 0.2), 1.8)
-	window.position = Vector3(0, -0.14, 0.14)
+	window.material_override = ToyMaterials.plastic(Color(0.55, 0.42, 0.18), 0.55)
+	window.position = Vector3(0, -0.14, 0.05)
 	rig.add_child(window)
 	rig.set_meta("nozzles", nozzles)
 	return rig
