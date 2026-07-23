@@ -89,7 +89,7 @@ func _build_machine_tower() -> void:
 			Vector3(aabb.size.x, aabb.size.y, aabb.size.z))
 	else:
 		_static_box(_machine_pos + Vector3(0, 20, 0), Vector3(44, 40, 40),
-			ToyMaterials.plastic(Color(0.85, 0.87, 0.9), 0.3))
+			ToyMaterials.porcelain(Color(0.76, 0.78, 0.8), 0.48))
 	# Detergent-box staircase up the east flank: each crate sits half-sunk
 	# into the one below so the stack reads as leaning boxes, not floaters.
 	for i in 6:

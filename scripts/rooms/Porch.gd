@@ -79,8 +79,12 @@ func _build_porch_furniture() -> void:
 	# Premade porch lounge + watchtower silhouettes.
 	add_prop("sofa_small", Vector3(-52, 0, 40), 20, 10.0)
 	add_prop("sofa_small", Vector3(-40, 0, 46), -30, 9.0)
-	add_landmark("chair", Vector3(-58, 0, 34), 40, 4.5)
-	add_landmark("chair", Vector3(-34, 0, 42), -50, 4.5)
+	var porch_chair_a := add_landmark("chair", Vector3(-58, 0, 34), 40, 4.5)
+	if porch_chair_a != null:
+		_setup_chair_collision(porch_chair_a)
+	var porch_chair_b := add_landmark("chair", Vector3(-34, 0, 42), -50, 4.5)
+	if porch_chair_b != null:
+		_setup_chair_collision(porch_chair_b)
 	add_prop("streetlight", Vector3(-30, 0, 36), 180, 10.0)
 	add_prop("structure_1", Vector3(8, 0, 42), -15, 12.0)
 	add_prop("crate", Vector3(-46, 0, 32), 10, 2.8)

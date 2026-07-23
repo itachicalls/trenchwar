@@ -160,7 +160,7 @@ func _build_tv_command_center() -> void:
 	glow.position = Vector3(0, 34, center_z - 0.9)
 	add_child(glow)
 	# Game console + cables spilling off the cabinet = climbable route.
-	_static_box(Vector3(-20, 17.5, center_z - 2), Vector3(10, 3, 8), ToyMaterials.plastic(Color(0.9, 0.9, 0.92), 0.4))
+	_static_box(Vector3(-20, 17.5, center_z - 2), Vector3(10, 3, 8), ToyMaterials.porcelain(Color(0.76, 0.78, 0.8), 0.5))
 	var cable := _static_box(Vector3(-28, 6.5, center_z - 14), Vector3(2.4, 1.6, 26), ToyMaterials.plastic(Color(0.1, 0.1, 0.12), 0.5))
 	cable.rotation_degrees.x = -28.0
 

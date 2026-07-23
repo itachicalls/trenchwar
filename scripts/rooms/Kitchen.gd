@@ -137,17 +137,15 @@ func _build_table_mesa() -> void:
 			bowl.position = Vector3(6, table_top, 0)
 			bowl.rotation_degrees.y = 25.0
 			table.add_child(bowl)
+			_setup_prop_collision(bowl)
 	else:
 		_static_box(table_pos + Vector3(0, 19.5, 0), Vector3(44, 2, 26), wood)
 
-	# Two real chairs: seat height ~9 = the stepping stones to the mesa top.
+	# Two real chairs: climbable seats, open crawl space underneath.
 	for spec in [[Vector3(-28, 0, 18), 25.0], [Vector3(26, 0, -20), -160.0]]:
 		var chair := add_landmark("chair", table_pos + spec[0], spec[1], 8.7)
 		if chair != null:
-			var seat_top := landmark_top_local(chair) * 0.42
-			_landmark_box(chair, Vector3(0, seat_top * 0.5, 0), Vector3(8.7, maxf(seat_top, 4.0), 9.4))
-			_landmark_box(chair, Vector3(0, seat_top + 5.0, 4), Vector3(8.7, 11.0, 1.6))
-			_landmark_deck(chair, 0.85, 0.8)
+			_setup_chair_collision(chair)
 		else:
 			var seat := _static_box(table_pos + spec[0] + Vector3(0, 4.5, 0), Vector3(13, 9, 13), wood)
 			seat.rotation_degrees.y = spec[1]

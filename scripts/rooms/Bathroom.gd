@@ -34,9 +34,9 @@ func _ready() -> void:
 func _build_lighting() -> void:
 	var we := WorldEnvironment.new()
 	# White porcelain bounces everything: run the rig dimmer than other rooms.
-	we.environment = RoomBase.make_night_environment(Color(0.1, 0.15, 0.19), Color(0.4, 0.47, 0.55), 1.0)
+	we.environment = RoomBase.make_night_environment(Color(0.1, 0.15, 0.19), Color(0.36, 0.42, 0.5), 0.85)
 	add_child(we)
-	add_light_rig(self, Vector3(-50, 35, 0), Color(0.7, 0.82, 1.0), 1.15)
+	add_light_rig(self, Vector3(-50, 35, 0), Color(0.7, 0.82, 1.0), 0.95)
 
 	# Vanity strip over the sink: buzzy, slightly green, unmistakably bathroom.
 	var vanity := SpotLight3D.new()
@@ -130,20 +130,14 @@ func _build_room_shell() -> void:
 #  TUB FORTRESS — west side. A porcelain canyon with a duck on the rim.
 # =========================================================================
 func _build_tub_fortress() -> void:
-	var porcelain := ToyMaterials.plastic(Color(0.92, 0.94, 0.95), 0.12)
+	var porcelain := ToyMaterials.porcelain()
 	var tub := Vector3(-34, 0, 18)
 	# Real furniture asset (Kenney bathtub, ~44 x 15.5 x 20.7 at this scale).
 	# Colliders form the canyon: walls all around, walkable rim, raised
 	# interior floor so soldiers inside are hidden behind the porcelain.
 	var tub_rig := add_landmark("bathtub", tub, 0, 44.0)
 	if tub_rig != null:
-		_landmark_box(tub_rig, Vector3(0, 7, -9), Vector3(44, 14, 2.8))     # long walls
-		_landmark_box(tub_rig, Vector3(0, 7, 9), Vector3(44, 14, 2.8))
-		_landmark_box(tub_rig, Vector3(-21, 7, 0), Vector3(2.8, 14, 16))    # ends
-		_landmark_box(tub_rig, Vector3(21, 7, 0), Vector3(2.8, 14, 16))
-		_landmark_box(tub_rig, Vector3(0, 1.5, 0), Vector3(41, 3, 16))      # interior floor
-		_landmark_box(tub_rig, Vector3(0, 14.8, -9.5), Vector3(46, 1.4, 5)) # rim walkways
-		_landmark_box(tub_rig, Vector3(0, 14.8, 9.5), Vector3(46, 1.4, 5))
+		_setup_bathtub_collision(tub_rig)
 	else:
 		_static_box(tub + Vector3(0, 7, -14), Vector3(44, 14, 4), porcelain)
 		_static_box(tub + Vector3(0, 7, 14), Vector3(44, 14, 4), porcelain)
@@ -190,11 +184,11 @@ func _build_toilet_tower() -> void:
 	# Colliders: pedestal, walkable bowl-seat platform, tank wall at the back.
 	var toilet := add_landmark("toilet", base, 0, 22.0)
 	if toilet != null:
-		_landmark_box(toilet, Vector3(0, 5, 1), Vector3(10, 10, 12))       # pedestal
-		_landmark_box(toilet, Vector3(0, 13, 1.5), Vector3(13.6, 6, 19))   # bowl + seat, top 16
-		_landmark_box(toilet, Vector3(0, 21, -8), Vector3(13.6, 11, 6))    # tank tower
+		# Kenney toilet seat surface sits ~44% up the AABB (old hand boxes
+		# topped out at y=16 while the mesh seat is ~11.6 — float gap).
+		_setup_toilet_collision(toilet)
 	else:
-		_static_cylinder(base + Vector3(0, 8, 0), 8.0, 16.0, ToyMaterials.plastic(Color(0.9, 0.92, 0.94), 0.12))
+		_static_cylinder(base + Vector3(0, 8, 0), 8.0, 16.0, ToyMaterials.porcelain())
 	# Plunger ramp: handle leaning against the bowl = the climb.
 	var handle := _static_box(base + Vector3(-10, 6.5, 10), Vector3(1.8, 1.8, 22), ToyMaterials.wood(Color(0.6, 0.42, 0.25)))
 	handle.rotation_degrees.x = -36.0
@@ -206,7 +200,7 @@ func _build_toilet_tower() -> void:
 # =========================================================================
 func _build_sink_cabinet() -> void:
 	var wood := ToyMaterials.wood(Color(0.42, 0.32, 0.26))
-	var top_mat := ToyMaterials.plastic(Color(0.85, 0.87, 0.9), 0.2)
+	var top_mat := ToyMaterials.porcelain(Color(0.78, 0.8, 0.83), 0.45)
 	var z := -ROOM_D / 2 + 12.0
 	# Cabinet on legs: the dark crawlspace under it is the depot.
 	for leg in [Vector3(-52, 0, z - 6), Vector3(-14, 0, z - 6), Vector3(-52, 0, z + 6), Vector3(-14, 0, z + 6)]:
@@ -223,7 +217,7 @@ func _build_sink_cabinet() -> void:
 	# A giant pedestal sink guards the far corner (real model, solid).
 	var sink := add_landmark("sink", Vector3(48, 0, -12), -90, 16.0)
 	if sink != null:
-		_landmark_box(sink, Vector3(0, 8.3, 0), Vector3(14, 16.6, 9.4))
+		_setup_solid_hull(sink, 0.92)
 
 	# The depot: three supply pods in the crawlspace shadow.
 	for offset in [Vector3(-44, 0, z), Vector3(-33, 0, z + 3), Vector3(-22, 0, z - 2)]:

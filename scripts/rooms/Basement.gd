@@ -77,8 +77,12 @@ func _build_storage_rows() -> void:
 	add_prop("cardboard_2", Vector3(-34, 0, -28), 50, 5.0)
 
 func _build_boiler_corner() -> void:
-	add_landmark("washing_machine", Vector3(-36, 0, -28), 90, 14.0)
-	add_landmark("desk", Vector3(34, 0, 30), -30, 12.0)
+	var washer := add_landmark("washing_machine", Vector3(-36, 0, -28), 90, 14.0)
+	if washer != null:
+		_setup_solid_hull(washer)
+	var desk := add_landmark("desk", Vector3(34, 0, 30), -30, 12.0)
+	if desk != null:
+		_setup_desk_collision(desk)
 	add_prop("gastank", Vector3(40, 0, 20), 25, 4.5)
 	add_prop("watertank", Vector3(48, 0, 32), -40, 8.0)
 	add_prop("sacktrench_small", Vector3(24, 0, 28), 70, 4.5)

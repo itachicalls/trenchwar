@@ -6,36 +6,70 @@ extends Object
 
 static var _cache: Dictionary = {}
 
+## Near-white albedos + night exposure + bloom read as emissive lamps.
+## Cap luminance on desaturated brights; leave saturated toy colors alone.
+static func _tone_hot_white(color: Color, max_lum: float = 0.74) -> Color:
+	var mx := maxf(color.r, maxf(color.g, color.b))
+	var mn := minf(color.r, minf(color.g, color.b))
+	var chroma := mx - mn
+	var lum := color.get_luminance()
+	if chroma > 0.14 or lum <= max_lum:
+		return color
+	var scale := max_lum / maxf(lum, 0.001)
+	return Color(color.r * scale, color.g * scale, color.b * scale, color.a)
+
+static func _is_hot_white(color: Color) -> bool:
+	var mx := maxf(color.r, maxf(color.g, color.b))
+	var mn := minf(color.r, minf(color.g, color.b))
+	return (mx - mn) < 0.14 and color.get_luminance() > 0.62
+
 ## Glossy injection-molded plastic — the signature look.
 static func plastic(color: Color, roughness: float = 0.32) -> StandardMaterial3D:
-	var key := "p_%s_%.2f" % [color.to_html(), roughness]
+	var keyed := _tone_hot_white(color)
+	var hot := _is_hot_white(keyed)
+	if hot:
+		roughness = maxf(roughness, 0.42)
+	var key := "p_%s_%.2f" % [keyed.to_html(), roughness]
 	if key in _cache:
 		return _cache[key]
 	var m := StandardMaterial3D.new()
-	m.albedo_color = color
+	m.albedo_color = keyed
 	m.roughness = roughness
 	m.metallic = 0.0
 	m.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
 	m.clearcoat_enabled = true
-	m.clearcoat = 0.55
-	m.clearcoat_roughness = 0.25
-	# Rim highlight = the studio-photography edge light every toy photo has.
-	# Keeps silhouettes readable even when a unit is fully backlit.
-	m.rim_enabled = true
-	m.rim = 0.4
-	m.rim_tint = 0.6
+	# Hot whites: tame clearcoat/rim — those were the "shine lamp" edges.
+	if hot:
+		m.clearcoat = 0.18
+		m.clearcoat_roughness = 0.5
+		m.rim_enabled = false
+		m.metallic_specular = 0.35
+	else:
+		m.clearcoat = 0.55
+		m.clearcoat_roughness = 0.25
+		# Rim highlight = the studio-photography edge light every toy photo has.
+		# Keeps silhouettes readable even when a unit is fully backlit.
+		m.rim_enabled = true
+		m.rim = 0.4
+		m.rim_tint = 0.6
 	_cache[key] = m
 	return m
+
+## Matte porcelain / enamel (tubs, toilets, sinks, tile fixtures).
+## Kept darker than "photo white" so night exposure does not read as a lamp.
+static func porcelain(color: Color = Color(0.58, 0.61, 0.64), roughness: float = 0.55) -> StandardMaterial3D:
+	return plastic(color, roughness)
 
 ## Room floors: looks like the glossy plastic but with the specular tamed.
 ## Full-gloss plastic() on a room-sized bright floor put a blinding white
 ## highlight under the camera in the tile rooms — floors need to read matte.
 static func floor_mat(color: Color, roughness: float = 0.7) -> StandardMaterial3D:
-	var key := "f_%s_%.2f" % [color.to_html(), roughness]
+	var keyed := _tone_hot_white(color, 0.7)
+	var key := "f_%s_%.2f" % [keyed.to_html(), roughness]
 	if key in _cache:
 		return _cache[key]
 	var m := StandardMaterial3D.new()
-	m.albedo_color = color
+	m.albedo_color = keyed
 	m.roughness = maxf(roughness, 0.6)
 	m.metallic = 0.0
 	m.metallic_specular = 0.2
@@ -61,11 +95,12 @@ static func metal(color: Color, roughness: float = 0.25) -> StandardMaterial3D:
 
 ## Soft matte surfaces: carpet, pillows, plush toys, curtains.
 static func soft(color: Color) -> StandardMaterial3D:
-	var key := "s_" + color.to_html()
+	var keyed := _tone_hot_white(color, 0.78)
+	var key := "s_" + keyed.to_html()
 	if key in _cache:
 		return _cache[key]
 	var m := StandardMaterial3D.new()
-	m.albedo_color = color
+	m.albedo_color = keyed
 	m.roughness = 0.95
 	m.metallic = 0.0
 	_cache[key] = m

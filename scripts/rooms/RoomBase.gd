@@ -20,14 +20,14 @@ static func make_night_environment(fog_color: Color, ambient: Color, ambient_ene
 	env.ambient_light_color = ambient
 	env.ambient_light_energy = ambient_energy
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 1.35
-	# Bloom is a full-screen post pass — phones skip it, emissive materials
-	# still read bright without it.
+	env.tonemap_exposure = 1.2
 	# Bloom stays on for the toy look; phones keep emissives even if glow is light.
 	env.glow_enabled = true
-	env.glow_intensity = 0.55 if Game.is_touch() else 0.7
-	env.glow_bloom = 0.12 if Game.is_touch() else 0.15
-	env.glow_hdr_threshold = 0.9
+	env.glow_intensity = 0.5 if Game.is_touch() else 0.58
+	env.glow_bloom = 0.08 if Game.is_touch() else 0.1
+	# Above ~1.0 so lit porcelain / white plastic does not bloom like a lamp;
+	# true emissives (glow mats, screens) still cross the threshold.
+	env.glow_hdr_threshold = 1.25
 	# SSAO is a Forward+ desktop effect — Compatibility/web gets nothing from it.
 	env.ssao_enabled = not OS.has_feature("web")
 	env.ssao_intensity = 0.7
@@ -205,6 +205,123 @@ func _landmark_deck(rig: Node3D, inset: float = 0.92, thickness: float = 1.2) ->
 	var size := Vector3(aabb.size.x * inset, thickness, aabb.size.z * inset)
 	_landmark_box(rig, Vector3(0, top_y - thickness * 0.35, 0), size)
 
+## Chair: thin seat + four legs + backrest. Leaves crawl space under the seat
+## (a solid floor-to-seat box blocks that gap).
+func _setup_chair_collision(rig: Node3D) -> void:
+	if rig == null or not rig.has_meta("aabb"):
+		return
+	var aabb: AABB = rig.get_meta("aabb")
+	var w: float = aabb.size.x
+	var h: float = aabb.size.y
+	var d: float = aabb.size.z
+	var seat_y := h * 0.40
+	var seat_t := clampf(h * 0.08, 0.55, 1.4)
+	# Seat slab — climbable, open underneath.
+	_landmark_box(rig, Vector3(0, seat_y - seat_t * 0.5, d * -0.02), Vector3(w * 0.88, seat_t, d * 0.78))
+	# Four corner legs (thin posts).
+	var leg_h := maxf(seat_y - seat_t, 0.4)
+	var leg_t := clampf(minf(w, d) * 0.11, 0.45, 1.35)
+	var ox := w * 0.32
+	var oz := d * 0.28
+	for lx in [-ox, ox]:
+		for lz in [-oz, oz]:
+			_landmark_box(rig, Vector3(lx, leg_h * 0.5, lz), Vector3(leg_t, leg_h, leg_t))
+	# Backrest panel at the rear.
+	var back_h := maxf(h - seat_y, h * 0.35)
+	_landmark_box(rig, Vector3(0, seat_y + back_h * 0.45, d * 0.34),
+		Vector3(w * 0.82, back_h * 0.9, maxf(d * 0.12, 0.7)))
+
+## Solid appliance / closed furniture: full AABB hull.
+func _setup_solid_hull(rig: Node3D, xz_inset: float = 0.96) -> void:
+	if rig == null or not rig.has_meta("aabb"):
+		return
+	var aabb: AABB = rig.get_meta("aabb")
+	_landmark_box(rig, Vector3(0, aabb.size.y * 0.5, 0),
+		Vector3(aabb.size.x * xz_inset, aabb.size.y, aabb.size.z * xz_inset))
+
+## Desk / workbench: thin top + side panels, open crawl space in the middle.
+func _setup_desk_collision(rig: Node3D) -> void:
+	if rig == null or not rig.has_meta("aabb"):
+		return
+	var aabb: AABB = rig.get_meta("aabb")
+	var w: float = aabb.size.x
+	var h: float = aabb.size.y
+	var d: float = aabb.size.z
+	var top_t := clampf(h * 0.08, 0.9, 2.6)
+	_landmark_box(rig, Vector3(0, h - top_t * 0.5, 0), Vector3(w * 0.98, top_t, d * 0.95))
+	var leg_h := maxf(h - top_t, 0.5)
+	var panel_w := clampf(w * 0.08, 1.2, 3.5)
+	_landmark_box(rig, Vector3(-w * 0.42, leg_h * 0.5, 0), Vector3(panel_w, leg_h, d * 0.9))
+	_landmark_box(rig, Vector3(w * 0.42, leg_h * 0.5, 0), Vector3(panel_w, leg_h, d * 0.9))
+
+## AABB box collider on a ModelLib prop already parented somewhere (table clutter).
+## Thin imported fences/signs get a minimum thickness so the capsule cannot
+## tunnel through a 0.1u plane.
+func _setup_prop_collision(rig: Node3D, min_thickness: float = 0.95) -> void:
+	if rig == null or not rig.has_meta("aabb"):
+		return
+	var aabb: AABB = rig.get_meta("aabb")
+	var size := Vector3(
+		maxf(aabb.size.x, min_thickness),
+		maxf(aabb.size.y, 0.4),
+		maxf(aabb.size.z, min_thickness))
+	var center := aabb.position + aabb.size * 0.5
+	var body := StaticBody3D.new()
+	body.collision_layer = 0b0001
+	body.collision_mask = 0
+	body.add_to_group("nav_geometry")
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	cs.shape = box
+	cs.position = center
+	body.add_child(cs)
+	rig.add_child(body)
+
+## Kenney toilet: seat deck flush with the mesh seat (~44% height), tank at rear.
+func _setup_toilet_collision(rig: Node3D) -> void:
+	if rig == null or not rig.has_meta("aabb"):
+		return
+	var aabb: AABB = rig.get_meta("aabb")
+	var w: float = aabb.size.x
+	var h: float = aabb.size.y
+	var d: float = aabb.size.z
+	var seat_top := h * 0.44
+	var seat_t := clampf(h * 0.06, 1.2, 2.0)
+	# Bowl / pedestal under the seat (stops below the walkable deck).
+	_landmark_box(rig, Vector3(0, (seat_top - seat_t) * 0.5, d * 0.04),
+		Vector3(w * 0.58, seat_top - seat_t, d * 0.5))
+	# Walkable seat — top matches the visual porcelain rim.
+	_landmark_box(rig, Vector3(0, seat_top - seat_t * 0.5, d * 0.04),
+		Vector3(w * 0.96, seat_t, d * 0.72))
+	# Tank tower at the back.
+	var tank_h := h - seat_top
+	_landmark_box(rig, Vector3(0, seat_top + tank_h * 0.5, -d * 0.30),
+		Vector3(w * 0.9, tank_h, d * 0.34))
+
+## Bathtub canyon: walls + floor + rim flush to the scaled AABB top.
+func _setup_bathtub_collision(rig: Node3D) -> void:
+	if rig == null or not rig.has_meta("aabb"):
+		return
+	var aabb: AABB = rig.get_meta("aabb")
+	var w: float = aabb.size.x
+	var h: float = aabb.size.y
+	var d: float = aabb.size.z
+	var wall_t := clampf(minf(w, d) * 0.07, 1.6, 3.2)
+	var rim_t := clampf(h * 0.1, 1.1, 1.8)
+	# Long walls / ends (canyon).
+	_landmark_box(rig, Vector3(0, h * 0.45, -d * 0.5 + wall_t * 0.5), Vector3(w, h * 0.9, wall_t))
+	_landmark_box(rig, Vector3(0, h * 0.45, d * 0.5 - wall_t * 0.5), Vector3(w, h * 0.9, wall_t))
+	_landmark_box(rig, Vector3(-w * 0.5 + wall_t * 0.5, h * 0.45, 0), Vector3(wall_t, h * 0.9, d * 0.85))
+	_landmark_box(rig, Vector3(w * 0.5 - wall_t * 0.5, h * 0.45, 0), Vector3(wall_t, h * 0.9, d * 0.85))
+	# Interior floor (raised so soldiers in the tub are behind the walls).
+	_landmark_box(rig, Vector3(0, h * 0.12, 0), Vector3(w * 0.82, h * 0.2, d * 0.7))
+	# Rim walkways flush with mesh top.
+	_landmark_box(rig, Vector3(0, h - rim_t * 0.45, -d * 0.5 + wall_t),
+		Vector3(w * 1.02, rim_t, wall_t * 1.6))
+	_landmark_box(rig, Vector3(0, h - rim_t * 0.45, d * 0.5 - wall_t),
+		Vector3(w * 1.02, rim_t, wall_t * 1.6))
+
 ## Local-space top of a landmark's scaled AABB (floor of rig is y=0).
 func landmark_top_local(rig: Node3D) -> float:
 	if rig == null or not rig.has_meta("aabb"):
@@ -296,18 +413,7 @@ func add_prop(prop_name: String, pos: Vector3, yaw_deg: float = 0.0, target_size
 	rig.rotation_degrees.y = yaw_deg
 	add_child(rig)
 	if collide:
-		var aabb: AABB = rig.get_meta("aabb")
-		var body := StaticBody3D.new()
-		body.collision_layer = 0b0001
-		body.collision_mask = 0
-		body.add_to_group("nav_geometry")
-		var cs := CollisionShape3D.new()
-		var box := BoxShape3D.new()
-		box.size = aabb.size
-		cs.shape = box
-		cs.position = aabb.position + aabb.size * 0.5
-		body.add_child(cs)
-		rig.add_child(body)
+		_setup_prop_collision(rig)
 	return rig
 
 ## Shootable fuel barrel (prop mesh). Spilled variants tip on their side.

@@ -96,6 +96,7 @@ static func build_prop(prop_name: String, target_size: float = 2.0) -> Node3D:
 	model.position.y = -aabb.position.y * s
 	var scaled := AABB(Vector3(aabb.position.x * s, 0.0, aabb.position.z * s), aabb.size * s)
 	rig.set_meta("aabb", scaled)
+	_dampen_bright_materials(model)
 	return rig
 
 ## Large furniture landmark (bed, tub, car...). Scaled so the largest
@@ -121,6 +122,9 @@ static func build_landmark(land_name: String, target_size: float) -> Node3D:
 	rig.set_meta("aabb", AABB(
 		Vector3(-aabb.size.x * s * 0.5, 0.0, -aabb.size.z * s * 0.5),
 		aabb.size * s))
+	# Kenney toilets/tubs/sinks ship near-white albedo that blooms under our
+	# night exposure — tone them so porcelain reads solid, not lit.
+	_dampen_bright_materials(model)
 	return rig
 
 ## Military toy jetpack: olive twin tanks with amber trim rings, chrome
@@ -297,6 +301,50 @@ static func _keep_only_gun(model: Node, keep: String) -> void:
 		var attachment: Node = model.find_child(gun_name.replace(".", "_"), true, false)
 		if attachment is BoneAttachment3D:
 			attachment.visible = (gun_name == keep)
+
+## Soften imported near-white / mirror-gloss surfaces so they do not bloom
+## like light sources on PC/web (night exposure + glow). Leaves saturated
+## colors and intentional strong emissives alone.
+static func _dampen_bright_materials(model: Node) -> void:
+	var stack: Array[Node] = [model]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D and n.mesh != null:
+			for i in n.mesh.get_surface_count():
+				var mat: Material = n.get_active_material(i)
+				if mat is StandardMaterial3D:
+					var src: StandardMaterial3D = mat
+					var c: Color = src.albedo_color
+					var mx := maxf(c.r, maxf(c.g, c.b))
+					var mn := minf(c.r, minf(c.g, c.b))
+					var chroma := mx - mn
+					var lum := c.get_luminance()
+					# Pure-white Kenney porcelain (toilet/tub) still blooms if we
+					# only tint albedo_color over a white texture — replace the
+					# surface with matte enamel instead.
+					var hot := chroma < 0.18 and lum > 0.72
+					var mirror := src.roughness < 0.28 and lum > 0.65 and chroma < 0.22
+					var soft_emit := src.emission_enabled and src.emission.get_luminance() > 0.75 \
+						and src.emission_energy_multiplier > 0.0 and src.emission_energy_multiplier < 0.35
+					if not hot and not mirror and not soft_emit:
+						continue
+					if hot:
+						n.set_surface_override_material(i, ToyMaterials.porcelain(
+							Color(0.58, 0.61, 0.64), 0.58))
+						continue
+					var m: StandardMaterial3D = src.duplicate()
+					if mirror:
+						m.albedo_color = ToyMaterials._tone_hot_white(c, 0.55)
+						m.roughness = maxf(m.roughness, 0.55)
+						m.clearcoat_enabled = false
+						m.rim_enabled = false
+						m.metallic_specular = minf(m.metallic_specular, 0.25)
+						if m.albedo_texture != null:
+							m.albedo_color = m.albedo_color * Color(0.7, 0.72, 0.74)
+					if soft_emit:
+						m.emission_enabled = false
+					n.set_surface_override_material(i, m)
+		stack.append_array(n.get_children())
 
 ## Multiplies a tint into every material (textures keep their detail) and
 ## nudges metallic/roughness so factions read as different plastics.
