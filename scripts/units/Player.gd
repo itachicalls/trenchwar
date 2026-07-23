@@ -31,9 +31,9 @@ const JET_LIFT := 14.0         ## target climb speed (clears couch/bed decks)
 var fuel := FUEL_MAX
 var _jet_engaged := false
 var _jet_flames: Array = []
-var _jet_sfx_timer := 0.0
 var _fuel_warned := false
 var _jet_burning := false
+var _jet_was_burning := false
 
 ## Read by the HUD every frame for the dynamic crosshair.
 var aim_at_enemy := false
@@ -153,13 +153,29 @@ func _update_jetpack(delta: float) -> void:
 		fuel = maxf(fuel - JET_DRAIN * delta, 0.0)
 		Events.fuel_changed.emit(fuel, FUEL_MAX)
 		_try_jet_mantle()
-		_jet_sfx_timer -= delta
-		if _jet_sfx_timer <= 0.0:
-			_jet_sfx_timer = 0.22
-			Sfx.play_at("engine", global_position, -16.0)
+	_update_jet_sfx(delta)
 	for f in _jet_flames:
 		if f.emitting != _jet_burning:
 			f.emitting = _jet_burning
+
+## Seamless thruster loop (Kenney thruster_fire) — ignite one-shot on start,
+## continuous roar while burning. The old 0.22s engine restart spam is gone.
+func _update_jet_sfx(_delta: float) -> void:
+	if _jet_burning and not _jet_was_burning:
+		Sfx.play("jet_ignite", -10.0, 0.06)
+		Sfx.start_loop("jet_loop", -9.0, 1.05)
+		Sfx.start_loop("jet_hum", -16.0, 0.85)
+	elif not _jet_burning and _jet_was_burning:
+		Sfx.stop_loop("jet_loop")
+		Sfx.stop_loop("jet_hum")
+	if _jet_burning:
+		# Climb harder → hotter pitch; easing off softens the roar.
+		var climb := clampf((velocity.y + 2.0) / (JET_LIFT + 2.0), 0.0, 1.0)
+		var pitch := lerpf(0.92, 1.18, climb)
+		var vol := lerpf(-12.0, -6.5, climb)
+		Sfx.set_loop("jet_loop", vol, pitch)
+		Sfx.set_loop("jet_hum", lerpf(-18.0, -14.0, climb), lerpf(0.8, 0.95, climb))
+	_jet_was_burning = _jet_burning
 
 ## When the jet hits a furniture SIDE, hop the capsule onto the ledge instead
 ## of sliding forever against the wall (couch/bed cresting).
@@ -478,7 +494,7 @@ func _update_movement(delta: float) -> void:
 	velocity.z = move_toward(velocity.z, wish.z * speed, accel * delta)
 	if Input.is_action_just_pressed("jump") and is_on_floor():
 		velocity.y = 13.0   # ~3.5 u apex: book-stair steps are jumpable
-		Sfx.play("step", -12.0)
+		Sfx.play("step", -9.0, 0.12)
 		Fx.dust(self, global_position)
 	move_and_slide()
 	# Plant hard on decks — kill residual downward speed so we don't sink
@@ -490,7 +506,7 @@ func _update_movement(delta: float) -> void:
 	if is_on_floor() and not _was_on_floor:
 		_land_dip = 1.0
 		Fx.dust(self, global_position, true)
-		Sfx.play("step", -10.0)
+		Sfx.play("step", -7.0, 0.1)
 	_was_on_floor = is_on_floor()
 
 	var moving := Vector2(velocity.x, velocity.z).length() > 0.5
@@ -503,8 +519,9 @@ func _update_movement(delta: float) -> void:
 		_step_timer -= delta
 		if _step_timer <= 0.0:
 			var sprinting := Input.is_action_pressed("sprint")
-			_step_timer = 0.32 / (SPRINT_MULT if sprinting else 1.0)
-			Sfx.play("step", -18.0)
+			# Snappier cadence so plastic boots actually read as walking.
+			_step_timer = (0.26 if sprinting else 0.34) / (1.15 if sprinting else 1.0)
+			Sfx.play("step", -8.0 if sprinting else -11.0, 0.14)
 			if sprinting:
 				Fx.dust(self, global_position)
 
@@ -647,6 +664,10 @@ func _on_died(_attacker: Node) -> void:
 	# Toy-soldier death cinematic: the mold keels over in slow motion while
 	# the camera lingers, THEN shatters. No more instant despawn.
 	_dying = true
+	_jet_burning = false
+	_jet_was_burning = false
+	Sfx.stop_loop("jet_loop")
+	Sfx.stop_loop("jet_hum")
 	collision_layer = 0
 	velocity = Vector3.ZERO
 	Sfx.play("death")

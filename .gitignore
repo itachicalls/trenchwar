@@ -4,3 +4,4 @@ export_presets.cfg
 tools/
 build/
 smoke_log.txt
+_tmp_kenney/

@@ -1,17 +1,22 @@
 extends Node
 ## Premade audio first (res://assets/audio/<name>.ogg|.wav), synth fallback.
-## 2D pool for UI/HUD; 3D pool for world emitters (no per-shot node spam).
+## 2D pool for UI/HUD; 3D pool for world emitters; dedicated loop players
+## for continuous sounds (jetpack thruster — never restart-spam one-shots).
 
 const RATE := 22050
 const NAMES := [
 	"shoot", "shoot_heavy", "twang", "hit", "hurt", "death", "reload",
 	"pickup", "objective", "click", "step", "explosion", "engine", "ui_confirm",
+	"jet_loop", "jet_ignite", "jet_hum",
 ]
 
 var _streams: Dictionary = {}
+var _step_variants: Array[AudioStream] = []
 var _pool: Array[AudioStreamPlayer] = []
 var _pool3d: Array[AudioStreamPlayer3D] = []
 var _pool3d_i := 0
+## Continuous loops keyed by name (jet_loop, jet_hum, engine…).
+var _loops: Dictionary = {}
 
 func _ready() -> void:
 	for name in NAMES:
@@ -21,6 +26,12 @@ func _ready() -> void:
 		_streams["shoot_alt"] = load("res://assets/audio/shoot_alt.ogg")
 	if ResourceLoader.exists("res://assets/audio/explosion_alt.ogg"):
 		_streams["explosion_alt"] = load("res://assets/audio/explosion_alt.ogg")
+	for i in 5:
+		var path := "res://assets/audio/step_%d.ogg" % i
+		if ResourceLoader.exists(path):
+			_step_variants.append(load(path))
+	if _step_variants.is_empty() and _streams.has("step"):
+		_step_variants.append(_streams["step"])
 	for i in 14:
 		var p := AudioStreamPlayer.new()
 		p.bus = "Master"
@@ -73,7 +84,56 @@ func play_at(name: String, position: Vector3, volume_db: float = 0.0) -> void:
 	p.global_position = position
 	p.play()
 
+## Start/keep a seamless loop. Safe to call every frame while active.
+func start_loop(name: String, volume_db: float = 0.0, pitch: float = 1.0) -> void:
+	var p := _ensure_loop(name)
+	if p == null:
+		return
+	p.volume_db = volume_db
+	p.pitch_scale = pitch
+	if not p.playing:
+		p.play()
+
+func set_loop(name: String, volume_db: float, pitch: float = 1.0) -> void:
+	var p: AudioStreamPlayer = _loops.get(name)
+	if p == null:
+		return
+	p.volume_db = volume_db
+	p.pitch_scale = pitch
+
+func stop_loop(name: String) -> void:
+	var p: AudioStreamPlayer = _loops.get(name)
+	if p != null and p.playing:
+		p.stop()
+
+func is_loop_playing(name: String) -> bool:
+	var p: AudioStreamPlayer = _loops.get(name)
+	return p != null and p.playing
+
+func _ensure_loop(name: String) -> AudioStreamPlayer:
+	if _loops.has(name):
+		return _loops[name]
+	var src: AudioStream = _streams.get(name)
+	if src == null:
+		return null
+	var stream := src.duplicate()
+	if stream is AudioStreamOggVorbis:
+		(stream as AudioStreamOggVorbis).loop = true
+	elif stream is AudioStreamWAV:
+		var wav := stream as AudioStreamWAV
+		wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		wav.loop_begin = 0
+		wav.loop_end = int(wav.data.size() / 2.0)
+	var p := AudioStreamPlayer.new()
+	p.bus = "Master"
+	p.stream = stream
+	add_child(p)
+	_loops[name] = p
+	return p
+
 func _pick(name: String) -> AudioStream:
+	if name == "step" and not _step_variants.is_empty():
+		return _step_variants[randi() % _step_variants.size()]
 	if name == "shoot" and _streams.has("shoot_alt") and randf() < 0.45:
 		return _streams["shoot_alt"]
 	if name == "explosion" and _streams.has("explosion_alt") and randf() < 0.4:
@@ -102,12 +162,13 @@ func _synth_for(name: String) -> AudioStreamWAV:
 			return _synth(0.55, func(t, _n): return sin(TAU * (392.0 if t < 0.15 else (523.0 if t < 0.3 else 659.0)) * t) * exp(-4.0 * t))
 		"click":
 			return _synth(0.04, func(t, n): return n * exp(-90.0 * t))
-		"step":
-			return _synth(0.05, func(t, n): return n * 0.5 * exp(-70.0 * t))
+		"step", "jet_ignite":
+			return _synth(0.07, func(t, n): return n * 0.7 * exp(-55.0 * t) + _sq(t, 180.0) * 0.15 * exp(-40.0 * t))
+		"jet_loop", "jet_hum", "engine":
+			# Fallback rumble loop if files missing.
+			return _synth(0.5, func(t, n): return _sq(t, 68.0 + 10.0 * sin(TAU * 11.0 * t)) * 0.4 + n * 0.12)
 		"explosion":
 			return _synth(0.6, func(t, n): return n * exp(-6.0 * t) + sin(TAU * 55.0 * t) * 0.6 * exp(-7.0 * t))
-		"engine":
-			return _synth(0.4, func(t, n): return _sq(t, 70.0 + 8.0 * sin(TAU * 9.0 * t)) * 0.35 + n * 0.08)
 		_:
 			return _synth(0.05, func(t, n): return n * exp(-80.0 * t))
 
