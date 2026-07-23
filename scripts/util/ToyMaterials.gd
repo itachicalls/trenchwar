@@ -56,9 +56,22 @@ static func plastic(color: Color, roughness: float = 0.32) -> StandardMaterial3D
 	return m
 
 ## Matte porcelain / enamel (tubs, toilets, sinks, tile fixtures).
-## Kept darker than "photo white" so night exposure does not read as a lamp.
-static func porcelain(color: Color = Color(0.58, 0.61, 0.64), roughness: float = 0.55) -> StandardMaterial3D:
-	return plastic(color, roughness)
+## No clearcoat/rim — those turned bathroom fixtures into bloom lamps on web.
+static func porcelain(color: Color = Color(0.48, 0.52, 0.55), roughness: float = 0.62) -> StandardMaterial3D:
+	var keyed := _tone_hot_white(color, 0.52)
+	var key := "porc_%s_%.2f" % [keyed.to_html(), roughness]
+	if key in _cache:
+		return _cache[key]
+	var m := StandardMaterial3D.new()
+	m.albedo_color = keyed
+	m.roughness = maxf(roughness, 0.55)
+	m.metallic = 0.0
+	m.metallic_specular = 0.2
+	m.clearcoat_enabled = false
+	m.rim_enabled = false
+	m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	_cache[key] = m
+	return m
 
 ## Room floors: looks like the glossy plastic but with the specular tamed.
 ## Full-gloss plastic() on a room-sized bright floor put a blinding white

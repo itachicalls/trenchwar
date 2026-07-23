@@ -38,34 +38,34 @@ func _build_lighting() -> void:
 	add_child(we)
 	add_light_rig(self, Vector3(-50, 35, 0), Color(0.7, 0.82, 1.0), 0.95)
 
-	# Vanity strip over the sink: buzzy, slightly green, unmistakably bathroom.
+	# Vanity strip — kept modest so porcelain does not wash to pure white.
 	var vanity := SpotLight3D.new()
 	vanity.light_color = Color(0.85, 0.95, 0.85)
-	vanity.light_energy = 2.0
-	vanity.spot_range = 60.0
+	vanity.light_energy = 1.15
+	vanity.spot_range = 50.0
 	vanity.spot_angle = 40.0
 	vanity.position = Vector3(-30, 46, -ROOM_D / 2 + 8)
 	vanity.rotation_degrees = Vector3(-75, 0, 0)
 	add_child(vanity)
-	register_flicker(vanity, 2.0, 11.0, 0.14)
+	register_flicker(vanity, 1.15, 11.0, 0.1)
 
 	# Warm nightlight plug near the door — the safe corner.
 	var plug := OmniLight3D.new()
 	plug.light_color = Color(1.0, 0.72, 0.42)
-	plug.light_energy = 2.0
-	plug.omni_range = 26.0
+	plug.light_energy = 1.2
+	plug.omni_range = 22.0
 	plug.position = Vector3(46, 4, 32)
 	add_child(plug)
-	register_flicker(plug, 2.0, 1.0, 0.07)
+	register_flicker(plug, 1.2, 1.0, 0.06)
 
 	# Cold Chrome glow leaking from under the sink cabinet.
 	var depot := OmniLight3D.new()
 	depot.light_color = Color(0.4, 0.9, 1.0)
-	depot.light_energy = 1.8
-	depot.omni_range = 32.0
+	depot.light_energy = 1.1
+	depot.omni_range = 28.0
 	depot.position = Vector3(-38, 6, -26)
 	add_child(depot)
-	register_flicker(depot, 1.8, 2.3, 0.16)
+	register_flicker(depot, 1.1, 2.3, 0.12)
 
 # =========================================================================
 #  ROOM SHELL — hexagon-feel tile floor, glossy wainscot walls.

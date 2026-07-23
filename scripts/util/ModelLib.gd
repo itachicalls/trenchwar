@@ -302,48 +302,41 @@ static func _keep_only_gun(model: Node, keep: String) -> void:
 		if attachment is BoneAttachment3D:
 			attachment.visible = (gun_name == keep)
 
-## Soften imported near-white / mirror-gloss surfaces so they do not bloom
-## like light sources on PC/web (night exposure + glow). Leaves saturated
-## colors and intentional strong emissives alone.
+## Soften imported near-white surfaces so they do not bloom like lamps under
+## night exposure + glow. Applies to EVERY level (landmarks + props), not just
+## new rooms. Hot whites get a full porcelain override (kills white textures).
 static func _dampen_bright_materials(model: Node) -> void:
+	var enamel := ToyMaterials.porcelain(Color(0.48, 0.52, 0.55), 0.62)
 	var stack: Array[Node] = [model]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
 		if n is MeshInstance3D and n.mesh != null:
-			for i in n.mesh.get_surface_count():
-				var mat: Material = n.get_active_material(i)
-				if mat is StandardMaterial3D:
-					var src: StandardMaterial3D = mat
+			var mi := n as MeshInstance3D
+			for i in mi.mesh.get_surface_count():
+				var mat: Material = mi.get_active_material(i)
+				if mat == null:
+					continue
+				# Compatibility/web can surface BaseMaterial3D subclasses.
+				if mat is BaseMaterial3D:
+					var src := mat as BaseMaterial3D
 					var c: Color = src.albedo_color
+					# White textures often leave albedo_color at WHITE — treat
+					# textured near-white the same as solid hot white.
 					var mx := maxf(c.r, maxf(c.g, c.b))
 					var mn := minf(c.r, minf(c.g, c.b))
 					var chroma := mx - mn
 					var lum := c.get_luminance()
-					# Pure-white Kenney porcelain (toilet/tub) still blooms if we
-					# only tint albedo_color over a white texture — replace the
-					# surface with matte enamel instead.
-					var hot := chroma < 0.18 and lum > 0.72
-					var mirror := src.roughness < 0.28 and lum > 0.65 and chroma < 0.22
-					var soft_emit := src.emission_enabled and src.emission.get_luminance() > 0.75 \
-						and src.emission_energy_multiplier > 0.0 and src.emission_energy_multiplier < 0.35
-					if not hot and not mirror and not soft_emit:
-						continue
+					var hot := (chroma < 0.22 and lum > 0.62) \
+						or (src.albedo_texture != null and chroma < 0.25 and lum > 0.55)
 					if hot:
-						n.set_surface_override_material(i, ToyMaterials.porcelain(
-							Color(0.58, 0.61, 0.64), 0.58))
+						mi.set_surface_override_material(i, enamel)
 						continue
-					var m: StandardMaterial3D = src.duplicate()
-					if mirror:
-						m.albedo_color = ToyMaterials._tone_hot_white(c, 0.55)
-						m.roughness = maxf(m.roughness, 0.55)
-						m.clearcoat_enabled = false
-						m.rim_enabled = false
-						m.metallic_specular = minf(m.metallic_specular, 0.25)
-						if m.albedo_texture != null:
-							m.albedo_color = m.albedo_color * Color(0.7, 0.72, 0.74)
+					var soft_emit := src.emission_enabled and src.emission.get_luminance() > 0.7 \
+						and src.emission_energy_multiplier > 0.0 and src.emission_energy_multiplier < 0.4
 					if soft_emit:
+						var m: BaseMaterial3D = src.duplicate()
 						m.emission_enabled = false
-					n.set_surface_override_material(i, m)
+						mi.set_surface_override_material(i, m)
 		stack.append_array(n.get_children())
 
 ## Multiplies a tint into every material (textures keep their detail) and
