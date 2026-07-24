@@ -12,7 +12,7 @@ var _next := 0
 var _time_left := TIME_LIMIT
 var _started := false
 var _finished := false
-var _marker: MeshInstance3D
+var _banner_cd := 0.0
 
 func _init() -> void:
 	arena_half = 60.0
@@ -21,12 +21,13 @@ func _setup_mode() -> void:
 	Missions.start_mission("PAPER PLANE RACE")
 	_build_course()
 	_plane = spawn_plane(Vector3(-arena_half + 10, 6, 0), 90.0)
+	_plane.lock_bail = true
 	var player := spawn_player(Vector3(-arena_half + 10, 1, 4))
 	_plane.call_deferred("force_board", player)
 	_started = true
 	_update_banner()
 	sub_banner.text = "FLY THROUGH THE HOOPS  •  W/S THROTTLE"
-	Events.notify.emit("AIR RACE: thread the glowing hoops in order. Bail with E only if you must!")
+	Events.notify.emit("AIR RACE: thread the glowing hoops in order. Stay airborne — no bailouts!")
 
 func _build_course() -> void:
 	# Obstacle islands between hoops (solid props — landable, height-matched colliders).
@@ -71,7 +72,7 @@ func _make_hoop(pos: Vector3, yaw_deg: float, index: int) -> Area3D:
 		ring.rotation_degrees.x = 90.0
 		ring.material_override = ToyMaterials.plastic(Color(0.2, 0.2, 0.22), 0.5)
 		root.add_child(ring)
-	# Soft glow rim so the next gate reads clearly.
+	# Marker rim — glow only applied to the active gate (cheaper on web).
 	var glow := MeshInstance3D.new()
 	var gm := CylinderMesh.new()
 	gm.top_radius = 2.9
@@ -79,7 +80,7 @@ func _make_hoop(pos: Vector3, yaw_deg: float, index: int) -> Area3D:
 	gm.height = 0.15
 	glow.mesh = gm
 	glow.rotation_degrees.x = 90.0
-	glow.material_override = ToyMaterials.glow(Color(0.35, 0.9, 1.0), 1.4)
+	glow.material_override = ToyMaterials.plastic(Color(0.35, 0.75, 1.0), 0.4)
 	glow.name = "Glow"
 	root.add_child(glow)
 	var area := Area3D.new()
@@ -104,7 +105,8 @@ func _on_hoop_body(body: Node, area: Area3D) -> void:
 		return
 	_next += 1
 	Sfx.play("objective", -4.0)
-	Fx.ring_pulse(self, area.global_position, Color(0.4, 1.0, 0.9), 4.0, 0.5)
+	if not Game.low_gfx():
+		Fx.ring_pulse(self, area.global_position, Color(0.4, 1.0, 0.9), 4.0, 0.5)
 	Events.notify.emit("HOOP %d / %d" % [_next, HOOP_COUNT])
 	if _next >= HOOP_COUNT:
 		_finished = true
@@ -123,20 +125,29 @@ func _highlight_next() -> void:
 		if glow == null:
 			continue
 		if i == _next:
-			glow.material_override = ToyMaterials.glow(Color(0.3, 1.0, 0.55), 2.2)
+			glow.material_override = ToyMaterials.glow(Color(0.3, 1.0, 0.55), 2.2 if not Game.low_gfx() else 1.2)
 			glow.visible = true
 		elif i < _next:
 			glow.visible = false
 		else:
-			glow.material_override = ToyMaterials.glow(Color(0.35, 0.75, 1.0), 0.9)
+			# Upcoming gates: cheap plastic, no emissive stack.
+			glow.material_override = ToyMaterials.plastic(Color(0.4, 0.7, 0.9), 0.45)
 			glow.visible = true
 
 func _process(delta: float) -> void:
 	super(delta)
 	if _match_over or not Game.is_playing() or not _started or _finished:
 		return
+	# Plane destroyed mid-race → fail cleanly (bail is locked).
+	if _plane != null and not is_instance_valid(_plane):
+		_finished = true
+		lose_match("Paper plane shredded — race over.")
+		return
 	_time_left -= delta
-	_update_banner()
+	_banner_cd -= delta
+	if _banner_cd <= 0.0:
+		_banner_cd = 0.25
+		_update_banner()
 	if _time_left <= 0.0:
 		_finished = true
 		lose_match("Time's up — the paper plane race slipped away.")

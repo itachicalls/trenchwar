@@ -21,6 +21,9 @@ var _cam_arm: SpringArm3D
 var _camera: Camera3D
 var _prompt: Label3D
 var _paper_mat: StandardMaterial3D
+## Race modes set this so E can't soft-lock the course.
+var lock_bail := false
+var _last_ammo := -1
 
 func _ready() -> void:
 	collision_layer = 0b0100
@@ -139,10 +142,13 @@ func force_board(p: Player) -> void:
 	Events.notify.emit("Airborne! W/S throttle, mouse steers, E to bail out.")
 
 func _fly(delta: float) -> void:
-	if Input.is_action_just_pressed("interact"):
+	if not lock_bail and Input.is_action_just_pressed("interact"):
 		_bail_out()
 		return
 	var throttle := Input.get_axis("move_back", "move_forward")
+	# Touch: hold forward by default so the race doesn't stall on phones.
+	if Game.is_touch() and absf(throttle) < 0.08:
+		throttle = 0.55
 	_speed = clampf(_speed + throttle * THROTTLE_RATE * delta, 0.0, MAX_SPEED)
 	# Slow decay toward glide speed; paper planes never just stop mid-air.
 	_speed = maxf(_speed - 0.8 * delta, 0.0)
@@ -169,7 +175,9 @@ func _fly(delta: float) -> void:
 
 	if Input.is_action_pressed("fire"):
 		guns.try_fire(forward)
-	Events.ammo_changed.emit(guns.ammo, guns.data.magazine_size)
+	if guns.ammo != _last_ammo:
+		_last_ammo = guns.ammo
+		Events.ammo_changed.emit(guns.ammo, guns.data.magazine_size)
 
 func _bail_out() -> void:
 	var exit_pos := global_position + Vector3.UP * 0.5

@@ -13,6 +13,7 @@ var _player_tank: ToyTank
 var _player_respawn := -1.0
 var _spawn_queue: Array[Dictionary] = []
 var _hull_lost := false
+var _remount_existing := false
 
 func _init() -> void:
 	arena_half = 55.0
@@ -22,10 +23,12 @@ func _setup_mode() -> void:
 	_player_tank = spawn_tank(Vector3(-arena_half + 14, 1, 0), 90.0)
 	var player := spawn_player(Vector3(-arena_half + 14, 1, 0))
 	_player_tank.call_deferred("force_board", player)
-	for i in 4:
+	var enemy_tanks := 3 if Game.low_gfx() else 4
+	for i in enemy_tanks:
 		_spawn_enemy_tank(i)
-	# Infantry skirmishers keep the flanks lively.
-	for i in 3:
+	# Infantry skirmishers — fewer on web/mobile.
+	var flank := 2 if Game.low_gfx() else 3
+	for i in flank:
 		spawn_bot(CHROME, Vector3(arena_half - 16, 1, (i - 1) * 10.0), ["heavy", "grenadier", "commando"][i])
 		spawn_bot(GREEN, Vector3(-arena_half + 18, 1, (i - 1) * 8.0), ["trooper", "scout", "commando"][i])
 	spawn_weapon_drop(Vector3(0, 4.2, 0), "marble", 50.0)
@@ -51,6 +54,7 @@ func _process(delta: float) -> void:
 		_check_win()
 		if not _match_over:
 			_player_respawn = 5.0
+			_remount_existing = false
 	for job in _spawn_queue.duplicate():
 		job.t -= delta
 		if job.t <= 0.0:
@@ -58,30 +62,44 @@ func _process(delta: float) -> void:
 			_spawn_enemy_tank(randi() % 4)
 	if _player_respawn > 0.0:
 		_player_respawn -= delta
-		banner.text = "NEW HULL IN %d..." % ceili(_player_respawn)
+		banner.text = ("REBOARD IN %d..." if _remount_existing else "NEW HULL IN %d...") % ceili(_player_respawn)
 		if _player_respawn <= 0.0:
-			_hull_lost = false
-			_player_tank = spawn_tank(Vector3(-arena_half + 14, 1, randf_range(-8, 8)), 90.0)
-			var player := Game.player
-			if player == null or not is_instance_valid(player):
-				player = spawn_player(_player_tank.position)
-			_player_tank.call_deferred("force_board", player)
-			_update_banner()
+			_respawn_player_armor()
+
+func _respawn_player_armor() -> void:
+	var player := Game.player
+	if _remount_existing and is_instance_valid(_player_tank):
+		_remount_existing = false
+		if player == null or not is_instance_valid(player):
+			player = spawn_player(_player_tank.global_position + Vector3(0, 1, 0))
+		_player_tank.call_deferred("force_board", player)
+		_update_banner()
+		return
+	_hull_lost = false
+	_remount_existing = false
+	_player_tank = spawn_tank(Vector3(-arena_half + 14, 1, randf_range(-8, 8)), 90.0)
+	if player == null or not is_instance_valid(player):
+		player = spawn_player(_player_tank.position)
+	_player_tank.call_deferred("force_board", player)
+	_update_banner()
 
 func _on_arena_unit_died(unit: Node) -> void:
 	if _match_over:
 		return
 	if unit is ToyTank and (unit as ToyTank).ai_controlled:
 		green_score += 1
-		Game.kills += 1
-		_spawn_queue.append({"t": 6.0})
+		_spawn_queue.append({"t": 6.0 if not Game.low_gfx() else 8.0})
 		_update_banner()
 		_check_win()
 
 func _on_player_died() -> void:
 	if _match_over:
 		return
-	# Infantry / bail-out death (hull loss already scored above).
+	# Bail / on-foot death with hull still alive: remount the same tank (no orphan hulls).
+	if is_instance_valid(_player_tank) and not _hull_lost:
+		_remount_existing = true
+		_player_respawn = 3.5
+		return
 	if not _hull_lost:
 		chrome_score += 1
 		_update_banner()
@@ -89,6 +107,7 @@ func _on_player_died() -> void:
 	if not _match_over and _player_respawn < 0.0:
 		_player_respawn = 5.0
 		_hull_lost = true
+		_remount_existing = false
 
 func _update_banner() -> void:
 	banner.text = "GREEN ARMOR  %d   —   %d  CHROME" % [green_score, chrome_score]

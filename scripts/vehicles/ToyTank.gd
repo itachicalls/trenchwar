@@ -24,14 +24,16 @@ var ai_controlled := false
 var ai_team: String = "chrome_legion"
 var _ai_fire_cd := 0.0
 var _ai_think := 0.0
+var _ai_target: Node3D = null
+var _last_ammo := -1
 
 func _ready() -> void:
 	collision_layer = 0b0100
 	collision_mask = 0b0111
 	add_to_group("vehicles")
 	if ai_controlled:
+		# enemies for damage/scoring — not combat_bots (that group is Unit scans).
 		add_to_group("enemies")
-		add_to_group("combat_bots")
 		add_to_group("team_" + ai_team)
 
 	health = Health.new()
@@ -182,7 +184,10 @@ func _ai_drive(delta: float) -> void:
 		velocity.y -= 24.0 * delta
 	_ai_think -= delta
 	_ai_fire_cd = maxf(_ai_fire_cd - delta, 0.0)
-	var target := _ai_pick_target()
+	if _ai_think <= 0.0 or _ai_target == null or not is_instance_valid(_ai_target):
+		_ai_think = 0.35 if Game.low_gfx() else 0.22
+		_ai_target = _ai_pick_target()
+	var target := _ai_target
 	var throttle := 0.0
 	var steer := 0.0
 	if target != null:
@@ -299,12 +304,14 @@ func _drive(delta: float) -> void:
 		var rev := clampf(absf(throttle), 0.0, 1.0)
 		Sfx.set_loop("engine", lerpf(-16.0, -12.0, rev), lerpf(0.88, 1.05, rev))
 
-	if Input.is_action_just_pressed("fire"):
+	if Input.is_action_just_pressed("fire") or (Game.is_touch() and Input.is_action_pressed("fire")):
 		var dir := (_aim_point - cannon.muzzle.global_position).normalized()
 		if cannon.try_fire(dir):
 			velocity -= dir * 3.5   # recoil shove
 			_fire_feedback(dir)
-	Events.ammo_changed.emit(cannon.ammo, cannon.data.magazine_size)
+	if cannon.ammo != _last_ammo:
+		_last_ammo = cannon.ammo
+		Events.ammo_changed.emit(cannon.ammo, cannon.data.magazine_size)
 
 ## One raycast from the camera through the reticle. Shots land on the
 ## crosshair no matter where the barrel sits relative to the camera.

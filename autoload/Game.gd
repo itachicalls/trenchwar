@@ -81,6 +81,9 @@ func _ready() -> void:
 	Events.player_spawned.connect(func(p): player = p)
 	Events.player_died.connect(func(): player = null)
 	Events.unit_died.connect(_on_unit_died)
+	# MSAA 4× is a Compatibility killer on web/mobile — desktop keeps project default.
+	if low_gfx():
+		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
 
 func _on_unit_died(unit: Node) -> void:
 	if unit.is_in_group("enemies"):

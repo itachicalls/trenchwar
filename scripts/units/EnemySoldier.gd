@@ -173,12 +173,14 @@ func _physics_process(delta: float) -> void:
 	if Game.player != null and is_instance_valid(Game.player):
 		dist_sq = global_position.distance_squared_to(Game.player.global_position)
 		near_player = dist_sq < 1600.0
-	# Deep sleep: far patrols skip almost everything on web/mobile.
-	var deep_sleep := Game.low_gfx() and state == AiState.PATROL and dist_sq > 2200.0
+	# Deep sleep: far patrols (and distant alerts) skip almost everything on web/mobile.
+	var sleep_sq := 3600.0 if Game.low_gfx() else 2200.0
+	var deep_sleep := Game.low_gfx() and dist_sq > sleep_sq \
+		and (state == AiState.PATROL or state == AiState.ALERT)
 	if deep_sleep:
 		_think_timer -= delta
 		if _think_timer <= 0.0:
-			_think_timer = 0.9
+			_think_timer = 1.1
 			_think()
 		velocity.x = 0.0
 		velocity.z = 0.0
@@ -190,7 +192,10 @@ func _physics_process(delta: float) -> void:
 	# Far squads think less often — same fight when you're near them, cheaper map.
 	_think_timer -= delta
 	if _think_timer <= 0.0:
-		_think_timer = 0.25 if near_player or state == AiState.COMBAT else (0.7 if Game.low_gfx() else 0.55)
+		if near_player or state == AiState.COMBAT:
+			_think_timer = 0.32 if Game.low_gfx() else 0.25
+		else:
+			_think_timer = 0.85 if Game.low_gfx() else 0.55
 		_think()
 	match state:
 		AiState.PATROL:

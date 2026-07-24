@@ -30,6 +30,8 @@ var _player_respawn := -1.0
 var _eliminated := {}
 var _zone_wall: MeshInstance3D
 var _tick := 0.0
+var _zone_notify_cd := 0.0
+var _banner_cd := 0.0
 
 func _init() -> void:
 	arena_half = 65.0
@@ -53,17 +55,23 @@ func _setup_mode() -> void:
 	_build_zone_wall()
 	# Loot spread: strong weapons pull squads toward the center early.
 	spawn_weapon_drop(Vector3(0, 4.2, 0), "marble", 60.0)
-	var loot := ["scatter", "sniper", "soaker", "repeater", "scatter", "sniper"]
+	var loot: Array = ["scatter", "sniper", "soaker", "repeater"]
+	if not Game.low_gfx():
+		loot.append_array(["scatter", "sniper"])
 	for i in loot.size():
 		var ang := TAU * i / loot.size() + 0.4
 		var r := arena_half * (0.35 + 0.25 * (i % 2))
 		spawn_weapon_drop(Vector3(cos(ang) * r, 0, sin(ang) * r), loot[i], 40.0)
-	# Mid-loot vehicles — high-risk high-reward pulls.
+	# Mid-loot vehicles — high-risk high-reward pulls (lighter set on web/mobile).
 	spawn_tank(Vector3(-10, 1, 18), 45.0)
-	spawn_tank(Vector3(16, 1, -12), -120.0)
-	spawn_plane(Vector3(0, 6, 24), 180.0)
-	Pickup.spawn_fuel(self, Vector3(8, 0, 8), 60)
-	Pickup.spawn_fuel(self, Vector3(-14, 0, -10), 60)
+	if Game.low_gfx():
+		spawn_plane(Vector3(0, 6, 24), 180.0)
+		Pickup.spawn_fuel(self, Vector3(8, 0, 8), 60)
+	else:
+		spawn_tank(Vector3(16, 1, -12), -120.0)
+		spawn_plane(Vector3(0, 6, 24), 180.0)
+		Pickup.spawn_fuel(self, Vector3(8, 0, 8), 60)
+		Pickup.spawn_fuel(self, Vector3(-14, 0, -10), 60)
 	_update_banner()
 	Events.notify.emit("RESURGENCE: keep one squadmate alive and the fallen return. Outlast every squad!")
 
@@ -74,13 +82,14 @@ func _build_zone_wall() -> void:
 	cyl.top_radius = 1.0
 	cyl.bottom_radius = 1.0
 	cyl.height = 60.0
-	cyl.radial_segments = 48
+	cyl.radial_segments = 16 if Game.low_gfx() else 48
 	_zone_wall.mesh = cyl
 	var m := StandardMaterial3D.new()
 	m.albedo_color = Color(0.3, 0.75, 1.0, 0.12)
-	m.emission_enabled = true
-	m.emission = Color(0.3, 0.75, 1.0)
-	m.emission_energy_multiplier = 1.2
+	m.emission_enabled = not Game.low_gfx()
+	if m.emission_enabled:
+		m.emission = Color(0.3, 0.75, 1.0)
+		m.emission_energy_multiplier = 1.2
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -96,12 +105,16 @@ func _process(delta: float) -> void:
 		return
 	_run_zone(delta)
 	_run_respawns(delta)
+	_zone_notify_cd = maxf(_zone_notify_cd - delta, 0.0)
 	_tick += delta
 	if _tick >= 1.0:
 		_tick = 0.0
 		_zone_damage()
 		_check_squads()
-	_update_banner()
+	_banner_cd -= delta
+	if _banner_cd <= 0.0:
+		_banner_cd = 0.25
+		_update_banner()
 
 func _run_zone(delta: float) -> void:
 	if _shrinking:
@@ -112,6 +125,7 @@ func _run_zone(delta: float) -> void:
 			stage_clock = STAGES[stage][1]
 			if stage == NO_RESPAWN_STAGE:
 				Events.notify.emit("RESURGENCE OFFLINE — no more respawns. Make it count.")
+		_zone_wall.scale = Vector3(zone_radius, 1, zone_radius)
 	else:
 		stage_clock -= delta
 		if stage_clock <= 0.0 and stage < STAGES.size() - 1:
@@ -119,7 +133,6 @@ func _run_zone(delta: float) -> void:
 			_shrinking = true
 			Events.notify.emit("The cleanup zone is closing in!")
 			Sfx.play("shoot_heavy", -6.0, 0.4)
-	_zone_wall.scale = Vector3(zone_radius, 1, zone_radius)
 
 func _zone_damage() -> void:
 	var victims: Array[Node] = []
@@ -135,7 +148,8 @@ func _zone_damage() -> void:
 		if v is Node3D and Vector2(v.global_position.x, v.global_position.z).length() > zone_radius:
 			if v.has_method("take_damage") and not (v.has_method("is_dead") and v.is_dead()):
 				v.take_damage(ZONE_DPS)
-				if v == Game.player or (Game.player != null and v == Game.player.current_vehicle):
+				if _zone_notify_cd <= 0.0 and (v == Game.player or (Game.player != null and v == Game.player.current_vehicle)):
+					_zone_notify_cd = 2.5
 					Events.notify.emit("You're outside the zone! Get inside the light!")
 
 func _respawns_allowed() -> bool:

@@ -27,12 +27,13 @@ func _ready() -> void:
 	rig.scale = Vector3.ONE * 0.8
 	add_child(rig)
 	var gold := Color(1.0, 0.85, 0.45)
-	_light = OmniLight3D.new()
-	_light.light_color = gold
-	_light.light_energy = 0.7
-	_light.omni_range = 3.0
-	_light.position.y = 0.8
-	add_child(_light)
+	if not Game.low_gfx():
+		_light = OmniLight3D.new()
+		_light.light_color = gold
+		_light.light_energy = 0.7
+		_light.omni_range = 3.0
+		_light.position.y = 0.8
+		add_child(_light)
 	var beam := MeshInstance3D.new()
 	var cyl := CylinderMesh.new()
 	cyl.top_radius = 0.04

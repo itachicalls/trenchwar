@@ -26,9 +26,11 @@ func _chrome_base() -> Vector3:
 func _setup_mode() -> void:
 	Missions.start_mission("SKIRMISH — THE SANDBOX")
 	spawn_player(_green_base())
-	for i in 5:
+	var green_n := 3 if Game.low_gfx() else 5
+	var chrome_n := 5 if Game.low_gfx() else 7
+	for i in green_n:
 		spawn_bot(GREEN, _green_base() + Vector3(3 + i * 2.5, 0, (i - 2) * 4.0), MIX[i])
-	for i in 7:
+	for i in chrome_n:
 		spawn_bot(CHROME, _chrome_base() + Vector3(-3 - (i % 3) * 2.5, 0, (i - 3) * 4.0), MIX[i])
 	_update_banner()
 	sub_banner.text = "FIRST TO %d  •  CASUAL VS BOTS" % SCORE_TARGET
@@ -36,12 +38,14 @@ func _setup_mode() -> void:
 	spawn_weapon_drop(Vector3(0, 4.2, 0), "marble", 45.0)
 	spawn_weapon_drop(Vector3(0, 0, -arena_half * 0.55), "scatter")
 	spawn_weapon_drop(Vector3(0, 0, arena_half * 0.55), "sniper")
-	spawn_weapon_drop(Vector3(-arena_half * 0.55, 0, 0), "soaker")
-	spawn_weapon_drop(Vector3(arena_half * 0.55, 0, 0), "repeater")
+	if not Game.low_gfx():
+		spawn_weapon_drop(Vector3(-arena_half * 0.55, 0, 0), "soaker")
+		spawn_weapon_drop(Vector3(arena_half * 0.55, 0, 0), "repeater")
 	# Mountable toys mid-field — optional power spikes, not required.
 	spawn_tank(Vector3(-18, 1, 22), -40.0)
-	spawn_tank(Vector3(20, 1, -18), 130.0)
-	spawn_plane(Vector3(0, 5, -28), 0.0)
+	if not Game.low_gfx():
+		spawn_tank(Vector3(20, 1, -18), 130.0)
+		spawn_plane(Vector3(0, 5, -28), 0.0)
 	# One Chrome AI hull so armor fights break out without a dedicated mode.
 	spawn_tank(Vector3(arena_half - 20, 1, 14), 180.0, "chrome_legion")
 	Pickup.spawn_fuel(self, Vector3(-8, 0, 10), 40)
@@ -73,7 +77,6 @@ func _on_arena_unit_died(unit: Node) -> void:
 	# AI tank hulls count as Chrome eliminations (no infantry respawn).
 	if unit is ToyTank and (unit as ToyTank).ai_controlled:
 		green_score += 1
-		Game.kills += 1
 		_pending.append({"team": CHROME, "t": BOT_RESPAWN + 4.0, "variant": "heavy", "as_tank": true})
 		_update_banner()
 		_check_win()

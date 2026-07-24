@@ -56,16 +56,17 @@ func _build_lighting() -> void:
 	we.environment = RoomBase.make_night_environment(Color(0.1, 0.12, 0.2), Color(0.4, 0.44, 0.58), 1.0)
 	add_child(we)
 	add_light_rig(self, Vector3(-44, 130, 0), Color(0.68, 0.76, 1.0), 1.2)
-	# Porch floodlight raking across the sand from one corner.
-	var flood := SpotLight3D.new()
-	flood.light_color = Color(1.0, 0.85, 0.6)
-	flood.light_energy = 3.0
-	flood.spot_range = arena_half * 3.0
-	flood.spot_angle = 40.0
-	flood.position = Vector3(-arena_half, 40, arena_half)
-	flood.rotation_degrees = Vector3(-40, -45, 0)
-	add_child(flood)
-	register_flicker(flood, 3.0, 0.8, 0.06)
+	# Porch floodlight: desktop only — Compatibility pays a full geometry pass.
+	if not Game.low_gfx():
+		var flood := SpotLight3D.new()
+		flood.light_color = Color(1.0, 0.85, 0.6)
+		flood.light_energy = 3.0
+		flood.spot_range = arena_half * 3.0
+		flood.spot_angle = 40.0
+		flood.position = Vector3(-arena_half, 40, arena_half)
+		flood.rotation_degrees = Vector3(-40, -45, 0)
+		add_child(flood)
+		register_flicker(flood, 3.0, 0.8, 0.06)
 
 func _build_arena() -> void:
 	var s := arena_half
@@ -95,7 +96,8 @@ func _build_arena() -> void:
 		ToyMaterials.plastic(Color(0.3, 0.5, 0.85), 0.3),
 		ToyMaterials.plastic(Color(0.9, 0.75, 0.25), 0.3),
 	]
-	for i in 12:
+	var cover_n := 7 if Game.low_gfx() else 12
+	for i in cover_n:
 		var pos := Vector3(rng.randf_range(-s * 0.75, s * 0.75), 0, rng.randf_range(-s * 0.75, s * 0.75))
 		if pos.length() < 16.0:
 			continue
@@ -108,7 +110,8 @@ func _build_arena() -> void:
 			2:
 				_static_box(pos + Vector3(0, 0.7, 0), Vector3(rng.randf_range(5, 8), 1.4, rng.randf_range(4, 6)),
 					ToyMaterials.carpet(Color(0.55, 0.46, 0.3)), true)
-	add_dust_motes(Vector3(0, 8, 0), Vector3(s, 8, s), 40, Color(0.85, 0.8, 0.6))
+	if not Game.low_gfx():
+		add_dust_motes(Vector3(0, 8, 0), Vector3(s, 8, s), 40, Color(0.85, 0.8, 0.6))
 
 ## Premade toy clutter — solid props you can land on; no freestyle air slabs.
 func _dress_arena_props(rng: RandomNumberGenerator) -> void:

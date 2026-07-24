@@ -73,19 +73,23 @@ static func muzzle_flash(parent: Node3D, color: Color, size: float = 1.0) -> voi
 
 ## Expanding, fading ring on the ground — pickups, spawns, objective pings.
 static func ring_pulse(node: Node, position: Vector3, color: Color, radius: float = 1.5, duration: float = 0.45) -> void:
+	if Game.low_gfx() and radius > 2.5:
+		# Skip huge objective rings on web — impact burst already sells the hit.
+		return
 	var root := _root(node)
 	var ring := MeshInstance3D.new()
 	var torus := TorusMesh.new()
 	torus.inner_radius = 0.75
 	torus.outer_radius = 1.0
-	torus.rings = 24
-	torus.ring_segments = 6
+	torus.rings = 12 if Game.low_gfx() else 24
+	torus.ring_segments = 4 if Game.low_gfx() else 6
 	ring.mesh = torus
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
-	mat.emission_enabled = true
-	mat.emission = color
-	mat.emission_energy_multiplier = 2.5
+	mat.emission_enabled = not Game.low_gfx()
+	if mat.emission_enabled:
+		mat.emission = color
+		mat.emission_energy_multiplier = 2.5
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	ring.material_override = mat
@@ -150,9 +154,12 @@ static var _live_bursts := 0
 static func _burst(root: Node, position: Vector3, color: Color, count: int, life: float, speed: float, size: float, gravity_shards: bool = false) -> void:
 	# Cap concurrent bursts so a grenade volley can't spike the frame — each
 	# burst still looks full when it plays.
-	if _live_bursts >= 28:
+	var cap := 12 if Game.low_gfx() else 28
+	if _live_bursts >= cap:
 		return
 	_live_bursts += 1
+	if Game.low_gfx():
+		count = maxi(count / 2, 4)
 	var p := CPUParticles3D.new()
 	p.one_shot = true
 	p.emitting = true

@@ -30,6 +30,7 @@ var _buttons: Array[Dictionary] = []
 var _last_vp := Vector2.ZERO
 var _safe_origin := Vector2.ZERO
 var _dirty := true
+var _stick_redraw_cd := 0.0
 
 func _ready() -> void:
 	layer = 55
@@ -114,7 +115,10 @@ func _process(delta: float) -> void:
 			Input.action_release("sprint")
 	if _lookstick_finger != -1 and _lookstick_vec.length() > 0.08:
 		Game.touch_look += _lookstick_vec * LOOK_STICK_SPEED * delta
-		_dirty = true
+		_stick_redraw_cd -= delta
+		if _stick_redraw_cd <= 0.0:
+			_stick_redraw_cd = 0.05
+			_dirty = true
 	if _dirty:
 		_dirty = false
 		_canvas.queue_redraw()
@@ -226,7 +230,7 @@ func _draw_stick(home: Vector2, origin: Vector2, vec: Vector2, radius: float, he
 	var base := origin if held else home
 	var fill_a := 0.58 if held else 0.5
 	_canvas.draw_circle(base, radius, Color(0.04, 0.08, 0.05, fill_a))
-	_canvas.draw_arc(base, radius, 0, TAU, 48, Color(0.95, 1.0, 0.88, 0.85), 5.0, true)
+	_canvas.draw_arc(base, radius, 0, TAU, 20, Color(0.95, 1.0, 0.88, 0.85), 5.0, true)
 	var knob := base + vec * radius * 0.75
 	_canvas.draw_circle(knob, radius * 0.42, Color(0.78, 0.95, 0.55, 0.95 if held else 0.75))
 	var font := ThemeDB.fallback_font
@@ -241,7 +245,7 @@ func _draw_controls() -> void:
 	var font := ThemeDB.fallback_font
 	for b in _buttons:
 		_canvas.draw_circle(b.pos, b.radius, Color(0.05, 0.09, 0.04, 0.62 if b.held else 0.42))
-		_canvas.draw_arc(b.pos, b.radius, 0, TAU, 40,
+		_canvas.draw_arc(b.pos, b.radius, 0, TAU, 16,
 			Color(0.72, 0.95, 0.5, 0.95) if b.held else Color(0.9, 1.0, 0.85, 0.55), 4.0, true)
 		var size := int(b.radius * 0.5)
 		var text_size := font.get_string_size(b.label, HORIZONTAL_ALIGNMENT_CENTER, -1, size)

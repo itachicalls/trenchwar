@@ -30,6 +30,11 @@ func _build_visual() -> void:
 	capsule.height = 0.28 * data.projectile_scale
 	mesh.mesh = capsule
 	mesh.rotation_degrees.x = 90.0
+	# Web/mobile: plastic pellet — glow + additive tails multiply draw cost.
+	if Game.low_gfx():
+		mesh.material_override = ToyMaterials.plastic(data.projectile_color, 0.35)
+		add_child(mesh)
+		return
 	mesh.material_override = ToyMaterials.glow(data.projectile_color, 2.5)
 	add_child(mesh)
 	# Additive tracer tail so shots read at a distance.

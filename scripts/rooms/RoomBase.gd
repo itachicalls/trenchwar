@@ -87,13 +87,18 @@ func _process(_delta: float) -> void:
 	# the look is intact when you're there, without paying for the whole map.
 	var cam := get_viewport().get_camera_3d()
 	var cam_pos := cam.global_position if cam != null else Vector3.ZERO
+	var near_sq := 1600.0 if Game.low_gfx() else 4200.0
 	for f in _flickers:
 		var light: Light3D = f.light
 		if not is_instance_valid(light):
 			continue
-		var near := cam == null or light.global_position.distance_squared_to(cam_pos) < 4200.0
+		var near := cam == null or light.global_position.distance_squared_to(cam_pos) < near_sq
 		light.visible = near
 		if not near:
+			continue
+		# Web/mobile: skip per-frame sine energy churn; base energy is enough.
+		if Game.low_gfx():
+			light.light_energy = f.base
 			continue
 		var wave: float = 0.6 * sin(t * f.speed + f.phase) + 0.4 * sin(t * f.speed * 2.7 + f.phase * 1.7)
 		light.light_energy = f.base * (1.0 + wave * f.depth)
@@ -510,8 +515,11 @@ func add_capture_zone(pos: Vector3, objective_id: String = "capture",
 
 ## Drifting ambient dust motes: cheap, huge atmosphere win in dark rooms.
 func add_dust_motes(center: Vector3, extents: Vector3, amount: int = 40, color: Color = Color(0.9, 0.85, 0.7)) -> void:
-	if Game.low_gfx() and amount > 12:
-		amount = maxi(amount / 4, 8)
+	if Game.low_gfx():
+		# Arenas used to still spawn a full particle system at ~10 motes — skip.
+		if amount > 20:
+			return
+		amount = mini(amount, 6)
 	var motes := CPUParticles3D.new()
 	motes.amount = amount
 	motes.lifetime = 5.0 if Game.low_gfx() else 7.0
