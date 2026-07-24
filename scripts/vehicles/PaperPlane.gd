@@ -1,15 +1,16 @@
 class_name PaperPlane
 extends CharacterBody3D
-## Drivable paper airplane with forgiving arcade flight:
-##   W / S      throttle up / down
-##   Mouse      pitch and banking turns (yaw follows roll, like a real glider)
-##   Left click wing-mounted dart pods
-##   E          bail out (works anytime; you're a toy, the carpet is soft)
-## Below stall speed it glides gently down instead of tumbling.
+## Drivable paper airplane — arcade flight for races and sandbox joyrides.
+##   W / S      throttle
+##   A / D      yaw (bank follows)
+##   Mouse / look stick — pitch + extra bank
+##   Left click  dart pods
+##   E           bail (disabled when lock_bail)
 
-const MAX_SPEED := 22.0
-const MIN_FLY_SPEED := 6.0
-const THROTTLE_RATE := 10.0
+const MAX_SPEED := 26.0
+const MIN_FLY_SPEED := 8.0
+const THROTTLE_RATE := 14.0
+const YAW_RATE := 1.85
 
 var driver: Player = null
 var health: Health
@@ -17,7 +18,7 @@ var guns: Weapon
 var _speed := 0.0
 var _pitch := 0.0
 var _roll := 0.0
-var _cam_arm: SpringArm3D
+var _cam_pivot: Node3D
 var _camera: Camera3D
 var _prompt: Label3D
 var _paper_mat: StandardMaterial3D
@@ -31,28 +32,26 @@ func _ready() -> void:
 	add_to_group("vehicles")
 
 	health = Health.new()
-	health.setup(120.0)
+	health.setup(140.0)
 	health.died.connect(_on_destroyed)
 	add_child(health)
 
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(3.4, 0.5, 2.6)
+	box.size = Vector3(3.2, 0.45, 2.4)
 	shape.shape = box
 	add_child(shape)
 	_build_visual()
 
-	var pivot := Node3D.new()
-	pivot.position.y = 1.0
-	add_child(pivot)
-	_cam_arm = SpringArm3D.new()
-	_cam_arm.spring_length = 8.0
-	_cam_arm.collision_mask = 0b0001
-	_cam_arm.rotation_degrees.x = -12.0
-	pivot.add_child(_cam_arm)
+	# Fixed chase cam (no SpringArm) — spring collapse against the floor was
+	# burying the lens in geometry and reading as a black void.
+	_cam_pivot = Node3D.new()
+	_cam_pivot.position = Vector3(0, 2.4, 7.5)
+	add_child(_cam_pivot)
 	_camera = Camera3D.new()
-	_camera.fov = 75.0
-	_cam_arm.add_child(_camera)
+	_camera.fov = 78.0
+	_camera.rotation_degrees.x = -8.0
+	_cam_pivot.add_child(_camera)
 
 	guns = Weapon.new()
 	guns.data = load("res://data/weapons/dart_launcher.tres")
@@ -71,9 +70,8 @@ func _ready() -> void:
 	add_child(_prompt)
 
 func _build_visual() -> void:
-	_paper_mat = ToyMaterials.plastic(Color(0.93, 0.92, 0.86), 0.75)
-	var lined := ToyMaterials.plastic(Color(0.8, 0.82, 0.88), 0.75)
-	# Fuselage crease — two long thin triangular prisms approximated with boxes.
+	_paper_mat = ToyMaterials.plastic(Color(0.96, 0.94, 0.88), 0.7)
+	var lined := ToyMaterials.plastic(Color(0.55, 0.78, 1.0), 0.55)
 	var spine := MeshInstance3D.new()
 	var spine_mesh := PrismMesh.new()
 	spine_mesh.size = Vector3(0.7, 0.9, 3.6)
@@ -81,36 +79,48 @@ func _build_visual() -> void:
 	spine.material_override = _paper_mat
 	spine.position.y = 0.1
 	add_child(spine)
-	# Folded wings, angled slightly up.
 	for side in [-1.0, 1.0]:
 		var wing := MeshInstance3D.new()
 		var wing_mesh := BoxMesh.new()
-		wing_mesh.size = Vector3(2.0, 0.06, 3.2)
+		wing_mesh.size = Vector3(2.2, 0.06, 3.0)
 		wing.mesh = wing_mesh
 		wing.material_override = lined if side < 0 else _paper_mat
-		wing.position = Vector3(side * 1.05, 0.32, 0.2)
+		wing.position = Vector3(side * 1.15, 0.32, 0.15)
 		wing.rotation_degrees.z = side * 8.0
 		add_child(wing)
+	# Tail fin so orientation reads in chase cam.
+	var fin := MeshInstance3D.new()
+	var fm := BoxMesh.new()
+	fm.size = Vector3(0.08, 0.7, 0.55)
+	fin.mesh = fm
+	fin.material_override = lined
+	fin.position = Vector3(0, 0.55, 1.5)
+	add_child(fin)
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
 	if driver == null:
 		return
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		_pitch = clampf(_pitch + event.relative.y * 0.0022, -0.9, 0.9)
-		_roll = clampf(_roll - event.relative.x * 0.003, -1.1, 1.1)
+	if event is InputEventMouseButton and event.pressed:
+		Game.capture_mouse()
+	if event is InputEventMouseMotion:
+		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not Game.is_touch():
+			return
+		if event.relative.length() > 250.0:
+			return
+		_pitch = clampf(_pitch + event.relative.y * 0.0026, -0.85, 0.85)
+		_roll = clampf(_roll - event.relative.x * 0.0034, -1.15, 1.15)
 
 func _physics_process(delta: float) -> void:
 	if not Game.is_playing():
 		return
-	# Touch look-drag flies the plane.
 	if driver != null and Game.touch_look != Vector2.ZERO:
-		_pitch = clampf(_pitch + Game.touch_look.y * 0.6, -0.9, 0.9)
-		_roll = clampf(_roll - Game.touch_look.x * 0.8, -1.1, 1.1)
+		_pitch = clampf(_pitch + Game.touch_look.y * 0.7, -0.85, 0.85)
+		_roll = clampf(_roll - Game.touch_look.x * 0.9, -1.15, 1.15)
 		Game.touch_look = Vector2.ZERO
 	if driver == null:
 		_check_mount()
 		if not is_on_floor():
-			velocity.y -= 10.0 * delta   # paper falls slowly
+			velocity.y -= 10.0 * delta
 			velocity.x *= 0.98
 			velocity.z *= 0.98
 			move_and_slide()
@@ -125,51 +135,53 @@ func _check_mount() -> void:
 	if near and Input.is_action_just_pressed("interact"):
 		force_board(p)
 
-## Instantly board (paper-plane race start).
 func force_board(p: Player) -> void:
 	if p == null or not is_instance_valid(p):
 		return
 	driver = p
 	p.enter_vehicle(self)
-	_speed = MIN_FLY_SPEED + 4.0
-	_pitch = -0.12
+	_speed = MIN_FLY_SPEED + 6.0
+	_pitch = -0.08
 	_roll = 0.0
 	_camera.make_current()
+	Game.capture_mouse()
 	if _prompt != null:
 		_prompt.visible = false
 	Events.weapon_changed.emit(guns.data.display_name)
 	Events.ammo_changed.emit(guns.ammo, guns.data.magazine_size)
-	Events.notify.emit("Airborne! W/S throttle, mouse steers, E to bail out.")
+	Events.notify.emit("Airborne! W throttle, A/D turn, mouse pitches. Thread the glowing hoops!")
 
 func _fly(delta: float) -> void:
 	if not lock_bail and Input.is_action_just_pressed("interact"):
 		_bail_out()
 		return
 	var throttle := Input.get_axis("move_back", "move_forward")
-	# Touch: hold forward by default so the race doesn't stall on phones.
+	var yaw_stick := Input.get_axis("move_right", "move_left")
+	# Touch: gentle cruise if the stick is idle so races don't stall.
 	if Game.is_touch() and absf(throttle) < 0.08:
-		throttle = 0.55
+		throttle = 0.65
 	_speed = clampf(_speed + throttle * THROTTLE_RATE * delta, 0.0, MAX_SPEED)
-	# Slow decay toward glide speed; paper planes never just stop mid-air.
-	_speed = maxf(_speed - 0.8 * delta, 0.0)
-	_roll = move_toward(_roll, 0.0, 1.2 * delta)   # auto-level the bank
+	_speed = maxf(_speed - 0.55 * delta, 0.0)
 
-	# Yaw follows roll (coordinated turn), pitch is direct.
-	rotation.y += -_roll * 1.6 * delta
-	rotation.x = lerp_angle(rotation.x, -_pitch, 6.0 * delta)
-	rotation.z = lerp_angle(rotation.z, _roll * 0.7, 6.0 * delta)
+	# A/D yaws; mouse roll adds coordinated bank. Soft auto-level.
+	rotation.y += (-yaw_stick * YAW_RATE - _roll * 1.35) * delta
+	_roll = move_toward(_roll, clampf(-yaw_stick * 0.55, -0.7, 0.7), 2.4 * delta)
+	rotation.x = lerp_angle(rotation.x, -_pitch, 7.0 * delta)
+	rotation.z = lerp_angle(rotation.z, _roll * 0.75, 7.0 * delta)
 
 	var forward := -global_transform.basis.z
 	velocity = forward * _speed
-	# Below stall speed: mush downward, keep it gentle and readable.
 	if _speed < MIN_FLY_SPEED:
-		velocity.y -= (MIN_FLY_SPEED - _speed) * 2.2
+		velocity.y -= (MIN_FLY_SPEED - _speed) * 2.0
+	# Soft floor bounce so you don't dig into sand and black-screen.
+	if global_position.y < 2.2 and velocity.y < 0.0:
+		velocity.y = maxf(velocity.y, -2.0)
+		global_position.y = maxf(global_position.y, 1.8)
 	move_and_slide()
 
-	# Crashing into things hurts the plane, not the pilot.
-	if get_slide_collision_count() > 0 and _speed > 10.0:
-		health.damage(_speed * 1.5)
-		_speed *= 0.4
+	if get_slide_collision_count() > 0 and _speed > 12.0:
+		health.damage(_speed * 1.1)
+		_speed *= 0.45
 		Fx.impact(self, global_position, Color(0.93, 0.92, 0.86))
 		Sfx.play_at("hit", global_position)
 
@@ -187,7 +199,7 @@ func _bail_out() -> void:
 	rotation.x = 0.0
 	rotation.z = 0.0
 	p.exit_vehicle(exit_pos)
-	p.velocity = velocity * 0.5   # inherit some momentum, land with style
+	p.velocity = velocity * 0.5
 	Events.weapon_changed.emit(p.weapon.data.display_name)
 	Events.ammo_changed.emit(p.weapon.ammo, p.weapon.data.magazine_size)
 

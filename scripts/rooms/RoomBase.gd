@@ -103,6 +103,19 @@ func _process(_delta: float) -> void:
 		var wave: float = 0.6 * sin(t * f.speed + f.phase) + 0.4 * sin(t * f.speed * 2.7 + f.phase * 1.7)
 		light.light_energy = f.base * (1.0 + wave * f.depth)
 
+## Living units in a group (skips dead husks still awaiting shatter). Optional filter.
+func count_living_in_group(group: String, filter: Callable = Callable()) -> int:
+	var n := 0
+	for node in get_tree().get_nodes_in_group(group):
+		if not is_instance_valid(node):
+			continue
+		if node.has_method("is_dead") and node.is_dead():
+			continue
+		if filter.is_valid() and not filter.call(node):
+			continue
+		n += 1
+	return n
+
 ## Position of the node in `group` nearest the player (Vector3.INF when none).
 func nearest_in_group(group: String, filter: Callable = Callable()) -> Vector3:
 	var p := Game.player

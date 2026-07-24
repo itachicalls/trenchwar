@@ -16,6 +16,8 @@ const LINES := [28.0, 0.0, -28.0]
 
 var _wave := 0
 var _lines_captured := 0
+var _counter_active := false
+var _audit_cd := 0.0
 
 func _ready() -> void:
 	LostToy.reset_level_counters()
@@ -30,6 +32,15 @@ func _ready() -> void:
 	_bake_navmesh()
 	_start_mission()
 	Events.unit_died.connect(_on_unit_died)
+
+func _process(delta: float) -> void:
+	super(delta)
+	if not _counter_active or not Game.is_playing():
+		return
+	_audit_cd -= delta
+	if _audit_cd <= 0.0:
+		_audit_cd = 1.25
+		_audit_counter()
 
 # =========================================================================
 #  LIGHTING — moonlit open field, flare light over no-man's-land.
@@ -315,19 +326,36 @@ func _nearest_uncaptured_flag() -> Vector3:
 
 ## All three lines taken: the Legion throws everything it has left at you.
 func _begin_counterattack() -> void:
+	if _counter_active:
+		return
+	_counter_active = true
 	Events.notify.emit("All lines secured! Chrome counterattack inbound — HOLD THE LINE!")
-	for wave in 3:
-		get_tree().create_timer(4.0 + wave * 18.0).timeout.connect(func():
-			if not Game.is_playing():
+	# Capture wave index by value — GDScript lambdas share the loop variable.
+	for wave_i in 3:
+		var delay := 4.0 + float(wave_i) * 18.0
+		var idx := wave_i + 1
+		get_tree().create_timer(delay).timeout.connect(func():
+			if not Game.is_playing() or not is_inside_tree():
 				return
-			_wave += 1
-			Events.notify.emit("COUNTERATTACK WAVE %d!" % _wave)
+			_wave = idx
+			Events.notify.emit("COUNTERATTACK WAVE %d!" % idx)
 			Sfx.play("shoot_heavy", -4.0, 0.35)
-			var mix := ["trooper", "commando", "grenadier", "heavy"]
-			for i in 4:
-				var x := -30.0 + i * 20.0
-				_spawn_enemy(mix[i], [Vector3(x, 1, 20)], Vector3(x, 1, -ROOM_D / 2 + 8), true))
+			var mix := ["trooper", "commando", "grenadier", "heavy", "chrome_beetle"]
+			# 5 per wave (15 total) vs 12 needed — buffer so squad kills / misses can't soft-lock.
+			for i in 5:
+				var x := -36.0 + i * 18.0
+				_spawn_enemy(mix[i % mix.size()], [Vector3(x, 1, 20)], Vector3(x, 1, -ROOM_D / 2 + 8), true))
 
 func _on_unit_died(unit: Node) -> void:
-	if unit is EnemySoldier and unit.has_meta("wave"):
+	# Once the counterattack is live, ANY Chrome death counts — player or squad.
+	if _counter_active and unit is EnemySoldier:
 		Missions.progress("counter")
+		_audit_counter()
+
+func _audit_counter() -> void:
+	if not _counter_active or Missions.is_done("counter"):
+		return
+	# Don't forgive while later waves are still queued.
+	if _wave < 3:
+		return
+	Missions.sync_living("counter", count_living_in_group("enemies"))

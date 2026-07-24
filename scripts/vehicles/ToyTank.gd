@@ -50,14 +50,17 @@ func _ready() -> void:
 	_build_visual()
 
 	_cam_pivot = Node3D.new()
-	_cam_pivot.position.y = 1.6
+	_cam_pivot.position.y = 2.2
 	add_child(_cam_pivot)
+	# Soft spring so cover doesn't pin the camera, but never fully collapse.
 	var spring := SpringArm3D.new()
-	spring.spring_length = 9.5
+	spring.spring_length = 11.0
+	spring.margin = 0.4
 	spring.collision_mask = 0b0001
 	_cam_pivot.add_child(spring)
 	_camera = Camera3D.new()
-	_camera.fov = 65.0
+	_camera.fov = 68.0
+	_camera.position = Vector3(0, 1.2, 0)   # slight high chase, reads over the hull
 	spring.add_child(_camera)
 
 	cannon = Weapon.new()
@@ -138,12 +141,19 @@ func _build_visual() -> void:
 	tube.position = Vector3(0, 0.15, -1.0)
 	barrel.add_child(tube)
 
-func _unhandled_input(event: InputEvent) -> void:
-	if driver == null:
+func _input(event: InputEvent) -> void:
+	if driver == null or ai_controlled:
 		return
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		_yaw -= event.relative.x * 0.0028
-		_pitch = clampf(_pitch - event.relative.y * 0.0028, -0.95, 0.55)
+	# Click / tap re-locks pointer so look works after UI focus loss (web).
+	if event is InputEventMouseButton and event.pressed:
+		Game.capture_mouse()
+	if event is InputEventMouseMotion:
+		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not Game.is_touch():
+			return
+		if event.relative.length() > 250.0:
+			return
+		_yaw -= event.relative.x * 0.0032
+		_pitch = clampf(_pitch - event.relative.y * 0.0032, -0.85, 0.45)
 
 func _physics_process(delta: float) -> void:
 	if not Game.is_playing():
@@ -153,8 +163,8 @@ func _physics_process(delta: float) -> void:
 		return
 	# Touch look-drag steers the turret while driving.
 	if driver != null and Game.touch_look != Vector2.ZERO:
-		_yaw -= Game.touch_look.x * 0.7
-		_pitch = clampf(_pitch - Game.touch_look.y * 0.7, -0.95, 0.55)
+		_yaw -= Game.touch_look.x * 0.85
+		_pitch = clampf(_pitch - Game.touch_look.y * 0.85, -0.85, 0.45)
 		Game.touch_look = Vector2.ZERO
 	if driver == null:
 		_check_mount()
@@ -171,13 +181,15 @@ func force_board(p: Player) -> void:
 	driver = p
 	p.enter_vehicle(self)
 	_yaw = rotation.y
-	_pitch = -0.15
+	_pitch = -0.2
 	_camera.make_current()
+	Game.capture_mouse()
 	if _prompt != null:
 		_prompt.visible = false
 	Events.weapon_changed.emit(cannon.data.display_name)
 	Events.ammo_changed.emit(cannon.ammo, cannon.data.magazine_size)
 	Events.player_health_changed.emit(health.current, health.max_health)
+	Events.notify.emit("Tank boarded — mouse aims the turret, A/D steers the hull.")
 
 func _ai_drive(delta: float) -> void:
 	if not is_on_floor():
@@ -251,15 +263,7 @@ func _check_mount() -> void:
 		and global_position.distance_to(p.global_position) < 4.0
 	_prompt.visible = near
 	if near and Input.is_action_just_pressed("interact"):
-		driver = p
-		p.enter_vehicle(self)
-		_yaw = rotation.y
-		_pitch = -0.15
-		_camera.make_current()
-		_prompt.visible = false
-		Events.weapon_changed.emit(cannon.data.display_name)
-		Events.ammo_changed.emit(cannon.ammo, cannon.data.magazine_size)
-		Events.player_health_changed.emit(health.current, health.max_health)
+		force_board(p)
 
 func _drive(delta: float) -> void:
 	if Input.is_action_just_pressed("interact"):
@@ -269,6 +273,7 @@ func _drive(delta: float) -> void:
 		velocity.y -= 24.0 * delta
 	var throttle := Input.get_axis("move_back", "move_forward")
 	var steer := Input.get_axis("move_right", "move_left")
+	# Hull turns with A/D; turret/camera yaw is independent (mouse / look stick).
 	rotation.y += steer * TURN_SPEED * delta * (1.0 if throttle >= 0.0 else -1.0)
 	var forward := -global_transform.basis.z
 	velocity.x = forward.x * throttle * HULL_SPEED
@@ -279,6 +284,7 @@ func _drive(delta: float) -> void:
 	# mission waypoints anchored to the tank instead of the mount point.
 	driver.global_position = global_position + Vector3.UP * 0.5
 
+	# Camera orbits in world yaw space so look stays free of hull steering.
 	_cam_pivot.rotation = Vector3(_pitch, _yaw - rotation.y, 0)
 	turret.rotation.y = _yaw - rotation.y
 	if barrel.get_parent() == self:   # asset-pack rig: aim node yaws itself

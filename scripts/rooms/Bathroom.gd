@@ -350,10 +350,17 @@ func _start_mission() -> void:
 	Events.notify.emit("Chrome ears under the sink. Scrub this bathroom clean, soldier.")
 
 func _on_unit_died(unit: Node) -> void:
-	if unit is EnemySoldier and unit.variant == "sniper":
+	if unit is EnemySoldier and (unit.variant == "sniper" or unit.variant == "yard_sniper"):
 		Missions.progress("snipers")
+		_audit_snipers()
 	if not _counterattack_sent and Missions.is_done("pods"):
 		_send_counterattack()
+
+func _audit_snipers() -> void:
+	if Missions.is_done("snipers"):
+		return
+	Missions.sync_living("snipers", count_living_in_group("enemies",
+		func(n): return n is EnemySoldier and (n.variant == "sniper" or n.variant == "yard_sniper")))
 
 func _send_counterattack() -> void:
 	_counterattack_sent = true
@@ -371,3 +378,4 @@ func _send_counterattack() -> void:
 		enemy.state = EnemySoldier.AiState.ALERT
 		if Game.player != null:
 			enemy.target = Game.player
+	get_tree().create_timer(0.5).timeout.connect(_audit_snipers)

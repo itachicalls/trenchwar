@@ -67,12 +67,12 @@ const MISSIONS := {
 	"tank_battle": [
 		"TANK BATTLE  —  Armor duel (vs bots)",
 		preload("res://scripts/rooms/TankBattleMode.gd"),
-		"Deploy already boarded. Chrome AI tanks hunt the sandbox while infantry\nskirmishes the flanks.\n\nFirst to 8 hull kills claims the arena. Stay in the turret.",
+		"Deploy already boarded. Mouse aims the independent turret; A/D turns\nthe hull; W/S drives. Chrome AI tanks hunt you.\n\nFirst to 8 hull kills. Click once on web if look feels stuck.",
 	],
 	"plane_race": [
-		"PAPER PLANE RACE  —  Hoop course",
+		"PAPER PLANE RACE  —  Sky circuit",
 		preload("res://scripts/rooms/PlaneRaceMode.gd"),
-		"Thread glowing tire hoops before the clock runs out. Premade toys form\nthe obstacles — no invisible air walls on the gates.\n\nW/S throttle, mouse steers, finish the course for bonus coins.",
+		"Bright backyard sky course — thread numbered tire hoops in order.\n\nW throttle, A/D turn, mouse pitches. Stay airborne and beat the clock.",
 	],
 	"hold_dune": [
 		"HOLD THE DUNE  —  King of the hill",

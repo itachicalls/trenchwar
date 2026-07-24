@@ -33,8 +33,8 @@ func _setup_mode() -> void:
 		spawn_bot(GREEN, Vector3(-arena_half + 18, 1, (i - 1) * 8.0), ["trooper", "scout", "commando"][i])
 	spawn_weapon_drop(Vector3(0, 4.2, 0), "marble", 50.0)
 	_update_banner()
-	sub_banner.text = "FIRST TO %d HULL KILLS  •  STAY BOARDED" % SCORE_TARGET
-	Events.notify.emit("TANK BATTLE: W/S drive, A/D steer, mouse aims the cannon. Crush Chrome armor!")
+	sub_banner.text = "FIRST TO %d HULL KILLS  •  MOUSE AIMS TURRET  •  A/D HULL"
+	Events.notify.emit("TANK BATTLE: click to lock mouse look, A/D turns the hull, W/S drives. Crush Chrome armor!")
 
 func _spawn_enemy_tank(slot: int) -> void:
 	var ang := TAU * 0.15 + slot * 0.55

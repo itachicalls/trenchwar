@@ -17,6 +17,8 @@ var _machine_pos := Vector3(0, 0, -ROOM_D / 2 + 24)
 var _cycle_timer: Timer
 var _rumbling := false
 var _foam: CPUParticles3D
+var _assault_waves_done := 0
+var _audit_cd := 0.0
 
 func _ready() -> void:
 	LostToy.reset_level_counters()
@@ -33,6 +35,15 @@ func _ready() -> void:
 	_start_mission()
 	_start_spin_cycle_clock()
 	Events.unit_died.connect(_on_unit_died)
+
+func _process(delta: float) -> void:
+	super(delta)
+	if not _assault_started or not Game.is_playing():
+		return
+	_audit_cd -= delta
+	if _audit_cd <= 0.0:
+		_audit_cd = 1.25
+		_audit_counter()
 
 # =========================================================================
 #  LIGHTING — one bare ceiling bulb + the machine's ominous drum glow.
@@ -316,16 +327,27 @@ func _run_rumble() -> void:
 func _begin_assault() -> void:
 	Events.notify.emit("The pumps are down! Chrome forces flooding in — SURVIVE THE SPIN CYCLE!")
 	_cycle_timer.wait_time = 18.0   # the machine thrashes harder now
-	for wave in 3:
-		get_tree().create_timer(3.0 + wave * 16.0).timeout.connect(func():
-			if not Game.is_playing():
+	for wave_i in 3:
+		var delay := 3.0 + float(wave_i) * 16.0
+		get_tree().create_timer(delay).timeout.connect(func():
+			if not Game.is_playing() or not is_inside_tree():
 				return
+			_assault_waves_done += 1
 			Sfx.play("shoot_heavy", -4.0, 0.35)
-			var mix := ["commando", "heavy", "grenadier", "trooper", "scout"]
-			for i in 5:
-				var x := -40.0 + i * 20.0
-				_spawn_enemy(mix[i], [Vector3(x, 1, 0)], Vector3(x, 1, -ROOM_D / 2 + 8), true))
+			var mix := ["commando", "heavy", "grenadier", "trooper", "scout", "chrome_ant"]
+			for i in 6:
+				var x := -45.0 + i * 18.0
+				_spawn_enemy(mix[i % mix.size()], [Vector3(x, 1, 0)], Vector3(x, 1, -ROOM_D / 2 + 8), true))
 
 func _on_unit_died(unit: Node) -> void:
-	if unit is EnemySoldier and unit.has_meta("wave"):
+	# Assault live: every Chrome death (player or squad) advances the quota.
+	if _assault_started and unit is EnemySoldier:
 		Missions.progress("counter")
+		_audit_counter()
+
+func _audit_counter() -> void:
+	if not _assault_started or Missions.is_done("counter"):
+		return
+	if _assault_waves_done < 3:
+		return
+	Missions.sync_living("counter", count_living_in_group("enemies"))

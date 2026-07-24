@@ -74,6 +74,25 @@ func forgive(id: String, amount: int = 1) -> void:
 		_finish(o)
 	Events.objectives_changed.emit()
 
+## Kill-quota safety net: if fewer matching enemies remain than the objective
+## still needs (or none), shrink/complete so the mission cannot soft-lock when
+## a spawn fails, a body falls out of the world, or squadmates finish the rest.
+func sync_living(id: String, living: int) -> void:
+	var o := _find(id)
+	if o == null or o.done:
+		return
+	var need := o.count_needed - o.count_done
+	if need <= 0:
+		return
+	if living <= 0:
+		complete(id)
+		return
+	if living < need:
+		o.count_needed = o.count_done + living
+		if o.count_done >= o.count_needed:
+			_finish(o)
+		Events.objectives_changed.emit()
+
 func is_done(id: String) -> bool:
 	var o := _find(id)
 	return o != null and o.done

@@ -246,14 +246,16 @@ func _apply_slot() -> void:
 	Events.weapon_changed.emit(weapon.data.display_name)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not Game.is_playing() or current_vehicle != null:
+	if not Game.is_playing():
 		return
-	# Web: first click captures the mouse (required by browsers). Touch
-	# devices skip pointer lock entirely — TouchControls drives the look.
+	# Web: first click captures the mouse (required by browsers). Must work
+	# while boarded too — vehicles only look when pointer-lock is active.
 	if OS.has_feature("web") and not Game.is_touch() \
 			and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		if event is InputEventMouseButton and event.pressed:
 			Game.capture_mouse()
+		return
+	if current_vehicle != null:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		# Pointer-lock acquisition can deliver one giant bogus delta (the
