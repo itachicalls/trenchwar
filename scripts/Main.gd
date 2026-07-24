@@ -55,29 +55,29 @@ const MISSIONS := {
 		"Under the stairs: fuel dumps, container aisles, and Chrome roomba drones\nskittering through the dark.\n\nDetonate the dumps. Recover the lost toys. Scrap the drones.",
 	],
 	"skirmish": [
-		"SKIRMISH  —  Team Deathmatch (vs bots)",
+		"SKIRMISH  —  Team Deathmatch",
 		preload("res://scripts/rooms/SkirmishMode.gd"),
-		"THE SANDBOX. Green Army versus Chrome Legion, full squads, everyone\nrespawns. First team to 25 eliminations owns the arena.\n\nTanks and a paper plane spawn mid-field. Casual rules — bots only.",
+		"THE SANDBOX. Green Army versus Chrome Legion, full squads, everyone\nrespawns. First team to 25 eliminations owns the arena.\n\nOffline: vs bots. Online: humans on either team — bots fill empty slots.",
 	],
 	"royale": [
-		"BATTLE ROYALE  —  Resurgence (vs bots)",
+		"BATTLE ROYALE  —  Resurgence",
 		preload("res://scripts/rooms/RoyaleMode.gd"),
-		"Four toy squads drop into the Sandbox. The cleanup zone closes in —\nanyone caught outside gets swept.\n\nRESURGENCE: fallen return while a teammate stands. Final circles cut\nrespawns. Armor and a plane are up for grabs. Last squad wins.",
+		"Four toy squads drop into the Sandbox. The cleanup zone closes in —\nanyone caught outside gets swept.\n\nOffline: vs bots. Online: pick a squad and fight other humans + bots.\nLast squad standing wins.",
 	],
 	"tank_battle": [
-		"TANK BATTLE  —  Armor duel (vs bots)",
+		"TANK BATTLE  —  Armor duel",
 		preload("res://scripts/rooms/TankBattleMode.gd"),
-		"Deploy already boarded. Mouse aims the independent turret; A/D turns\nthe hull; W/S drives. Chrome AI tanks hunt you.\n\nFirst to 8 hull kills. Click once on web if look feels stuck.",
+		"Deploy already boarded. Mouse aims the independent turret; A/D turns\nthe hull; W/S drives.\n\nOffline: vs Chrome AI. Online: human armor on both sides. First to 8 hull kills.",
 	],
 	"plane_race": [
 		"PAPER PLANE RACE  —  Sky circuit",
 		preload("res://scripts/rooms/PlaneRaceMode.gd"),
-		"Bright backyard sky course — thread numbered tire hoops in order.\n\nW throttle, A/D turn, mouse pitches. Stay airborne and beat the clock.",
+		"Bright backyard sky course — thread numbered tire hoops in order.\n\nOffline: beat the clock. Online: first pilot through every hoop wins.",
 	],
 	"hold_dune": [
-		"HOLD THE DUNE  —  Wave survival",
+		"HOLD THE DUNE  —  King of the hill",
 		preload("res://scripts/rooms/HoldDuneMode.gd"),
-		"Chrome rushes the shovel mound in relentless waves — heavies, insects,\nand armor. Contested ground drains hard.\n\nStand on the dune and fill the meter. Survive the onslaught.",
+		"Chrome rushes the shovel mound in relentless waves.\n\nOffline: hold vs bots. Online: Green fills the meter, Chrome contests the hill.",
 	],
 }
 const MISSION_ORDER := ["bedroom", "living_room", "kitchen", "bathroom", "garage", "backyard", "trenches", "laundry", "porch", "basement"]
@@ -163,6 +163,9 @@ func _ready() -> void:
 	Events.player_died.connect(_on_defeat)
 	Events.mission_failed.connect(_on_mode_defeat)
 	Events.mission_completed.connect(_on_victory)
+	Net.match_starting.connect(_on_net_match_starting)
+	Net.connection_failed.connect(func(reason: String): Events.notify.emit(reason))
+	Net.lobby_changed.connect(_on_net_lobby_changed)
 	# CI/headless smoke test: boot straight into the mission, run, then quit.
 	if "--menushot" in args:
 		get_tree().create_timer(1.5).timeout.connect(func():
@@ -761,11 +764,11 @@ func _show_modes() -> void:
 	_spacer(box, 10)
 	_subtitle(box, "VERSUS", 13, Color(0.55, 0.7, 0.85))
 	if Game.compact_ui():
-		_button(box, "SKIRMISH (VS BOTS)", func(): _show_briefing("skirmish"))
-		_button(box, "BATTLE ROYALE (VS BOTS)", func(): _show_briefing("royale"))
+		_button(box, "SKIRMISH", func(): _show_briefing("skirmish"))
+		_button(box, "BATTLE ROYALE", func(): _show_briefing("royale"))
 	else:
-		_button(box, "SKIRMISH  —  CASUAL (VS BOTS)", func(): _show_briefing("skirmish"))
-		_button(box, "BATTLE ROYALE: RESURGENCE  —  CASUAL (VS BOTS)", func(): _show_briefing("royale"))
+		_button(box, "SKIRMISH  —  TEAM DEATHMATCH", func(): _show_briefing("skirmish"))
+		_button(box, "BATTLE ROYALE: RESURGENCE", func(): _show_briefing("royale"))
 	_spacer(box, 8)
 	_subtitle(box, "MINI-GAMES", 13, Color(0.85, 0.7, 0.45))
 	if Game.compact_ui():
@@ -777,12 +780,130 @@ func _show_modes() -> void:
 		_button(box, "PAPER PLANE RACE  —  HOOP COURSE", func(): _show_briefing("plane_race"))
 		_button(box, "HOLD THE DUNE  —  KING OF THE HILL", func(): _show_briefing("hold_dune"))
 	_spacer(box, 6)
-	var online := _button(box, "ONLINE — COMING SOON", func(): pass)
-	online.disabled = true
+	_button(box, "ONLINE PVP  —  HOST / JOIN", _show_online_lobby, UiTheme.AMBER)
 	_spacer(box, 6)
-	_subtitle(box, "Premade toy cover you can land on. Race hoops are pass-through — no floating air blockers.", 12, Color(0.6, 0.65, 0.6))
+	_subtitle(box, "Offline = vs bots. Online lobby plays the same modes as PvP (bots fill empty slots).", 12, Color(0.6, 0.65, 0.6))
 	_spacer(box, 10)
 	_button(box, "BACK", _show_main_menu)
+
+# ---------------------------------------------------------------- ONLINE PVP
+
+var _online_addr: LineEdit
+var _lobby_refreshing := false
+
+func _show_online_lobby() -> void:
+	var box := _menu_base(0.72)
+	_title(box, "ONLINE PVP", 36 if Game.compact_ui() else 44, UiTheme.AMBER)
+	_subtitle(box, Net.status_text, 14, Color(0.8, 0.85, 0.7))
+	_spacer(box, 8)
+	if not Net.is_online:
+		_subtitle(box, "Desktop hosts a room. Web joins with ws://IP:9080 (wss:// if the page is HTTPS).", 13, Color(0.7, 0.72, 0.65))
+		_spacer(box, 8)
+		if Net.can_host():
+			_button(box, "HOST ROOM  (port %d)" % Net.DEFAULT_PORT, func():
+				var err := Net.host_game(Net.DEFAULT_PORT, Net.selected_mode)
+				if err == OK:
+					_show_online_lobby(), UiTheme.GREEN)
+		else:
+			_subtitle(box, "This browser can't host — join a desktop host or run tools/run_online_server.ps1", 13, UiTheme.CYAN)
+		_spacer(box, 6)
+		_subtitle(box, "JOIN ADDRESS", 12, Color(0.55, 0.7, 0.85))
+		_online_addr = LineEdit.new()
+		_online_addr.placeholder_text = "ws://192.168.x.x:9080"
+		_online_addr.text = "ws://127.0.0.1:%d" % Net.DEFAULT_PORT
+		_online_addr.custom_minimum_size = Vector2(_menu_width(), 48 if Game.compact_ui() else 40)
+		_online_addr.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		box.add_child(_online_addr)
+		_spacer(box, 6)
+		_button(box, "JOIN ROOM", func():
+			var addr := _online_addr.text if _online_addr != null else ""
+			Net.join_game(addr)
+			_show_online_lobby(), UiTheme.CYAN)
+	else:
+		_subtitle(box, "ROOM  %s" % Net.host_address_hint(), 16, UiTheme.CYAN)
+		_spacer(box, 6)
+		_subtitle(box, "TEAM", 12, Color(0.55, 0.7, 0.85))
+		var teams := [
+			["GREEN ARMY", "green_army", UiTheme.GREEN],
+			["CHROME LEGION", "chrome_legion", UiTheme.RED],
+		]
+		if Net.selected_mode == "royale":
+			teams.append_array([
+				["BRICK KINGDOM", "brick_kingdom", Color(0.85, 0.45, 0.3)],
+				["WIND-UP EMPIRE", "wind_up_empire", Color(0.75, 0.65, 0.3)],
+			])
+		for t in teams:
+			var mark := "  ✓" if Net.local_team == t[1] else ""
+			_button(box, str(t[0]) + mark, func():
+				Net.set_team(t[1])
+				_show_online_lobby(), t[2])
+		_spacer(box, 6)
+		if Net.is_host:
+			_subtitle(box, "MODE", 12, Color(0.55, 0.7, 0.85))
+			for mode_id in ["skirmish", "royale", "tank_battle", "plane_race", "hold_dune"]:
+				var label: String = MISSIONS[mode_id][0]
+				var mark := "  ✓" if Net.selected_mode == mode_id else ""
+				_button(box, label + mark, func():
+					Net.set_mode(mode_id)
+					_show_online_lobby())
+		else:
+			_subtitle(box, "MODE  %s" % MISSIONS.get(Net.selected_mode, ["?"])[0], 14, Color(0.85, 0.8, 0.6))
+		_spacer(box, 8)
+		_subtitle(box, "PLAYERS", 12, Color(0.55, 0.7, 0.85))
+		for id in Net.peers.keys():
+			var p: Dictionary = Net.peers[id]
+			var line := "%s  —  %s%s" % [
+				str(p.get("name", id)),
+				str(p.get("team", "?")).replace("_", " ").to_upper(),
+				"  [READY]" if p.get("ready", false) else "",
+			]
+			_subtitle(box, line, 13, Color(0.85, 0.85, 0.75))
+		_spacer(box, 8)
+		var ready_now := false
+		if Net.peers.has(Net.my_id()):
+			ready_now = bool(Net.peers[Net.my_id()].get("ready", false))
+		_button(box, "READY: %s" % ("YES" if ready_now else "NO"), func():
+			Net.set_ready(not ready_now)
+			_show_online_lobby(), UiTheme.AMBER)
+		if Net.is_host:
+			_button(box, "START MATCH", func():
+				Game.capture_mouse()
+				Net.host_start_match(), UiTheme.GREEN)
+		_spacer(box, 6)
+		_button(box, "LEAVE ROOM", func():
+			Net.reset()
+			_show_online_lobby(), UiTheme.RED)
+	_spacer(box, 10)
+	_button(box, "BACK", func():
+		if not Net.is_online:
+			_show_modes()
+		else:
+			_show_modes())
+
+func _on_net_lobby_changed() -> void:
+	# Refresh lobby UI if it's currently open (avoid stomping other menus).
+	if menu_layer == null or _lobby_refreshing:
+		return
+	if Game.state != Game.State.MENU and Game.state != Game.State.PLAYING:
+		pass
+	# Only rebuild when the online lobby title is showing.
+	for c in menu_layer.get_children():
+		if c is Control:
+			for l in c.find_children("*", "Label", true, false):
+				if l is Label and (l as Label).text == "ONLINE PVP":
+					_lobby_refreshing = true
+					_show_online_lobby()
+					_lobby_refreshing = false
+					return
+
+func _on_net_match_starting(mode_id: String) -> void:
+	if not MISSIONS.has(mode_id):
+		return
+	get_tree().paused = false
+	Game.capture_mouse()
+	await _fade(1.0, 0.35)
+	_deploy_mission(mode_id)
+	await _fade(0.0, 0.5)
 
 # ------------------------------------------------------------------ BARRACKS
 

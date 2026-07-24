@@ -13,6 +13,9 @@ var mode_ui: CanvasLayer
 var banner: Label
 var sub_banner: Label
 var _match_over := false
+## peer_id -> RemoteSoldier puppets for online humans
+var _net_remotes: Dictionary = {}
+var _net_pose_acc := 0.0
 
 func _ready() -> void:
 	Game.mode_respawns = true
@@ -25,7 +28,19 @@ func _ready() -> void:
 	_bake_navmesh()
 	Events.unit_died.connect(_on_arena_unit_died)
 	Events.player_died.connect(_on_player_died_base)
-	tree_exiting.connect(func(): Game.mode_respawns = false)
+	if Net.is_online:
+		Net.peer_pose.connect(_on_net_pose)
+		Net.peer_hurt.connect(_on_net_hurt)
+		Net.peer_down.connect(_on_net_down)
+	tree_exiting.connect(func():
+		Game.mode_respawns = false
+		if Net.is_online:
+			if Net.peer_pose.is_connected(_on_net_pose):
+				Net.peer_pose.disconnect(_on_net_pose)
+			if Net.peer_hurt.is_connected(_on_net_hurt):
+				Net.peer_hurt.disconnect(_on_net_hurt)
+			if Net.peer_down.is_connected(_on_net_down):
+				Net.peer_down.disconnect(_on_net_down))
 
 ## Death spectator view: the player node (and its camera) is freed on death,
 ## so cut to a high angle over the arena until the respawn.
@@ -187,10 +202,93 @@ func _build_center_dune() -> void:
 ## ---- combatants ------------------------------------------------------------
 func spawn_player(pos: Vector3) -> Player:
 	var player := Player.new()
-	player.faction = load("res://data/factions/green_army.tres")
+	var team := Net.local_team if Net.is_online else "green_army"
+	player.faction = load(Net.faction_path(team))
 	add_child(player)
 	player.position = pos
 	return player
+
+## Spawn the local human at their team base and remote puppets for other peers.
+## `bases` maps faction id -> spawn Vector3.
+func spawn_online_humans(bases: Dictionary) -> Player:
+	var team := Net.local_team if Net.is_online else "green_army"
+	if not bases.has(team):
+		team = "green_army"
+	var base: Vector3 = bases.get(team, Vector3.ZERO)
+	var player := spawn_player(base + Vector3(0, 0, randf_range(-2, 2)))
+	if Net.is_online:
+		for id in Net.peers.keys():
+			var pid: int = int(id)
+			if pid == Net.my_id():
+				continue
+			_ensure_remote(pid, bases)
+	return player
+
+func _team_bases_default() -> Dictionary:
+	return {
+		"green_army": Vector3(-arena_half + 10, 1, 0),
+		"chrome_legion": Vector3(arena_half - 10, 1, 0),
+		"brick_kingdom": Vector3(arena_half - 10, 1, arena_half - 12),
+		"wind_up_empire": Vector3(-arena_half + 10, 1, -arena_half + 12),
+	}
+
+func _ensure_remote(peer_id: int, bases: Dictionary) -> void:
+	if _net_remotes.has(peer_id) and is_instance_valid(_net_remotes[peer_id]):
+		return
+	var team := Net.team_for_peer(peer_id)
+	var remote := RemoteSoldier.new()
+	remote.peer_id = peer_id
+	remote.faction = load(Net.faction_path(team))
+	remote.display_name = Net.name_for_peer(peer_id)
+	add_child(remote)
+	var base: Vector3 = bases.get(team, bases.get("green_army", Vector3.ZERO))
+	remote.position = base + Vector3(randf_range(-3, 3), 0, randf_range(-3, 3))
+	_net_remotes[peer_id] = remote
+
+func _on_net_pose(peer_id: int, pos: Vector3, yaw: float, vel: Vector3) -> void:
+	if peer_id == Net.my_id():
+		return
+	if not _net_remotes.has(peer_id) or not is_instance_valid(_net_remotes[peer_id]):
+		_ensure_remote(peer_id, _team_bases_default())
+	var r: RemoteSoldier = _net_remotes.get(peer_id)
+	if r != null and is_instance_valid(r):
+		r.apply_net_pose(pos, yaw, vel)
+
+func _on_net_hurt(peer_id: int, amount: float) -> void:
+	if peer_id == Net.my_id():
+		if Game.player != null and is_instance_valid(Game.player):
+			Game.player.take_damage(amount, null)
+		return
+	var r: RemoteSoldier = _net_remotes.get(peer_id)
+	if r != null and is_instance_valid(r):
+		r.apply_damage_visual(amount)
+
+func _on_net_down(peer_id: int) -> void:
+	if peer_id == Net.my_id():
+		return
+	var r: RemoteSoldier = _net_remotes.get(peer_id)
+	if r != null and is_instance_valid(r):
+		Events.unit_died.emit(r)
+		r.queue_free()
+	_net_remotes.erase(peer_id)
+
+## Team-aware match end for online PvP (both sides see a correct outcome).
+func resolve_team_match(green_won: bool, win_title: String, lose_reason: String) -> void:
+	if Net.is_online:
+		var i_am_green := Net.local_team == "green_army"
+		if green_won == i_am_green:
+			win_match(win_title)
+		else:
+			lose_match(lose_reason)
+	elif green_won:
+		win_match(win_title)
+	else:
+		lose_match(lose_reason)
+
+func bot_slots(base_count: int, team: String) -> int:
+	if not Net.is_online:
+		return base_count
+	return maxi(0, base_count - Net.humans_on_team(team))
 
 func spawn_bot(faction_path: String, pos: Vector3, variant_name: String = "trooper") -> CombatBot:
 	var bot := CombatBot.new()

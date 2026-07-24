@@ -29,9 +29,15 @@ func _max_chrome() -> int:
 
 func _setup_mode() -> void:
 	Missions.start_mission("HOLD THE DUNE")
-	spawn_player(Vector3(-arena_half + 12, 1, 0))
+	if Net.is_online:
+		spawn_online_humans({
+			"green_army": Vector3(-arena_half + 12, 1, 0),
+			"chrome_legion": Vector3(arena_half - 12, 1, 0),
+		})
+	else:
+		spawn_player(Vector3(-arena_half + 12, 1, 0))
 	# Greens dig in on the mound flanks.
-	var mates := 2 if Game.low_gfx() else 3
+	var mates := bot_slots(2 if Game.low_gfx() else 3, "green_army")
 	for i in mates:
 		var mate := spawn_bot(GREEN, Vector3(-6 + i * 4.0, 1, 8), ["commando", "heavy", "trooper"][i])
 		mate.patrol_points = [Vector3(-4 + i * 3.0, 1, 2), Vector3(4, 1, -2), DUNE]
@@ -43,9 +49,9 @@ func _setup_mode() -> void:
 	if not Game.low_gfx():
 		spawn_tank(Vector3(-22, 1, -16), 30.0)
 	_update_banner()
-	sub_banner.text = "HOLD THE MOUND  •  WAVE AFTER WAVE"
+	sub_banner.text = ("ONLINE  •  GREEN HOLDS  •  CHROME CONTESTS" if Net.is_online
+		else "HOLD THE MOUND  •  WAVE AFTER WAVE")
 	Events.notify.emit("HOLD THE DUNE: Chrome is coming in waves. Plant boots on the shovel mound and don't give it back!")
-	# Opening wave immediately so the match never idles.
 	_spawn_wave()
 
 func _ring_dune() -> void:
@@ -103,19 +109,41 @@ func _process(delta: float) -> void:
 		_banner_cd = 0.2
 		_update_banner()
 	if _hold >= HOLD_TARGET:
-		win_match("DUNE SECURED — %d waves held" % _wave)
+		resolve_team_match(true, "DUNE SECURED — %d waves held" % _wave,
+			"Green locked the dune after %d waves." % _wave)
 		return
 	if _time_left <= 0.0:
-		lose_match("Time's up — Chrome took the dune.")
+		resolve_team_match(false, "CHROME TAKES THE DUNE",
+			"Time's up — Chrome took the dune.")
 		return
 	if _player_respawn > 0.0:
 		_player_respawn -= delta
 		banner.text = "REDEPLOYING IN %d..." % ceili(_player_respawn)
 		if _player_respawn <= 0.0:
-			spawn_player(Vector3(-arena_half + 12, 1, randf_range(-6, 6)))
+			var team := Net.local_team if Net.is_online else "green_army"
+			var base := Vector3(arena_half - 12, 1, 0) if team == "chrome_legion" \
+				else Vector3(-arena_half + 12, 1, 0)
+			spawn_player(base + Vector3(0, 0, randf_range(-6, 6)))
 			_update_banner()
 
+func _pos_on_hill(pos: Vector3, pad: float = 11.0) -> bool:
+	var flat := Vector2(pos.x, pos.z).length()
+	return flat < pad and pos.y >= 0.5 and pos.y < 8.5
+
 func _player_on_hill() -> bool:
+	# Any green human (local or remote puppet) counts for the hold.
+	if Net.is_online and Net.local_team == "chrome_legion":
+		# Chrome humans contest instead of filling the meter.
+		return false
+	for n in get_tree().get_nodes_in_group("team_green_army"):
+		if not is_instance_valid(n) or not (n is Node3D):
+			continue
+		if n is CombatBot:
+			continue
+		if n.has_method("is_dead") and n.is_dead():
+			continue
+		if _pos_on_hill((n as Node3D).global_position):
+			return true
 	var p := Game.player
 	if p == null or not is_instance_valid(p):
 		return false
@@ -124,8 +152,7 @@ func _player_on_hill() -> bool:
 	var pos: Vector3 = p.global_position
 	if p.current_vehicle != null and is_instance_valid(p.current_vehicle):
 		pos = p.current_vehicle.global_position
-	var flat := Vector2(pos.x, pos.z).length()
-	return flat < 11.0 and pos.y >= 0.5 and pos.y < 8.5
+	return _pos_on_hill(pos)
 
 func _chrome_on_hill() -> bool:
 	for n in get_tree().get_nodes_in_group("team_chrome_legion"):
@@ -134,8 +161,7 @@ func _chrome_on_hill() -> bool:
 		if n.has_method("is_dead") and n.is_dead():
 			continue
 		var pos: Vector3 = n.global_position
-		var flat := Vector2(pos.x, pos.z).length()
-		if flat < 11.5 and pos.y >= 1.0 and pos.y < 9.0:
+		if _pos_on_hill(pos, 11.5):
 			return true
 	return false
 

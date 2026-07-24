@@ -45,13 +45,20 @@ func _squad_corner(id: String) -> Vector3:
 
 func _setup_mode() -> void:
 	Missions.start_mission("BATTLE ROYALE — RESURGENCE")
+	var bases := {}
 	for id in SQUADS:
+		bases[id] = _squad_corner(id)
 		_eliminated[id] = false
+	if Net.is_online:
+		spawn_online_humans(bases)
+	else:
+		spawn_player(_squad_corner("green_army") + Vector3(0, 0, -4))
+	for id in SQUADS:
 		var corner := _squad_corner(id)
-		var n := SQUAD_SIZE - 1 if id == "green_army" else SQUAD_SIZE
+		var humans := Net.humans_on_team(id) if Net.is_online else (1 if id == "green_army" else 0)
+		var n := maxi(0, SQUAD_SIZE - humans)
 		for i in n:
 			spawn_bot(SQUADS[id], corner + Vector3((i - 1) * 3.5, 0, i * 2.5), ["commando", "scout", "heavy"][i % 3])
-	spawn_player(_squad_corner("green_army") + Vector3(0, 0, -4))
 	_build_zone_wall()
 	# Loot spread: strong weapons pull squads toward the center early.
 	spawn_weapon_drop(Vector3(0, 4.2, 0), "marble", 60.0)
@@ -155,32 +162,36 @@ func _zone_damage() -> void:
 func _respawns_allowed() -> bool:
 	return stage < NO_RESPAWN_STAGE
 
+func _my_squad() -> String:
+	return Net.local_team if Net.is_online else "green_army"
+
 func _squad_alive_count(id: String) -> int:
-	var count := get_tree().get_nodes_in_group("team_" + id).size()
-	if id == "green_army" and Game.player != null and is_instance_valid(Game.player):
-		count += 1
-	return count
+	# Players + remotes + bots all join team_<id>.
+	return get_tree().get_nodes_in_group("team_" + id).size()
 
 func _run_respawns(delta: float) -> void:
+	var my_squad := _my_squad()
 	for job in _pending.duplicate():
 		job.t -= delta
 		if job.t <= 0.0:
 			_pending.erase(job)
 			if not _respawns_allowed() or _eliminated[job.id] or _squad_alive_count(job.id) == 0:
 				continue
+			if job.get("human", false):
+				continue
 			var pos := _drop_point(job.id)
 			spawn_bot(SQUADS[job.id], pos, job.variant)
-			if job.id == "green_army":
+			if job.id == my_squad:
 				Events.notify.emit("Squadmate redeployed!")
 	if _player_respawn > 0.0:
 		_player_respawn -= delta
 		banner.text = "RESURGENCE IN %d..." % ceili(_player_respawn)
 		if _player_respawn <= 0.0:
-			if _squad_alive_count("green_army") > 0:
-				spawn_player(_drop_point("green_army"))
+			if _squad_alive_count(my_squad) > 0:
+				spawn_player(_drop_point(my_squad))
 				Events.notify.emit("You're back in the fight. Resurgence complete.")
 			else:
-				lose_match("Green squad wiped. The sandbox belongs to someone else tonight.")
+				lose_match("Your squad wiped. The sandbox belongs to someone else tonight.")
 
 ## Respawn inside the current zone, biased toward the squad's corner.
 func _drop_point(id: String) -> Vector3:
@@ -191,22 +202,38 @@ func _drop_point(id: String) -> Vector3:
 	return Vector3(dir.x + randf_range(-4, 4), 1, dir.y + randf_range(-4, 4))
 
 func _on_arena_unit_died(unit: Node) -> void:
-	if _match_over or not (unit is CombatBot):
+	if _match_over:
 		return
-	if unit.faction.id != "green_army":
+	var fid := ""
+	var variant := "trooper"
+	if unit is CombatBot:
+		fid = unit.faction.id
+		variant = unit.variant
+	elif unit is RemoteSoldier and unit.faction != null:
+		fid = unit.faction.id
+	else:
+		return
+	if fid != _my_squad():
 		Game.kills += 1
-	if _respawns_allowed():
-		_pending.append({"id": unit.faction.id, "t": RESPAWN_TIME, "variant": unit.variant})
+	if not _respawns_allowed():
+		return
+	if unit is CombatBot:
+		_pending.append({"id": fid, "t": RESPAWN_TIME, "variant": variant})
+	elif unit is RemoteSoldier:
+		# Grace window while that human redeploys on their machine.
+		_pending.append({"id": fid, "t": RESPAWN_TIME, "variant": variant, "human": true})
 
 func _on_player_died() -> void:
 	if _match_over:
 		return
-	if _respawns_allowed() and _squad_alive_count("green_army") > 0:
+	var my_squad := _my_squad()
+	if _respawns_allowed() and _squad_alive_count(my_squad) > 0:
 		_player_respawn = RESPAWN_TIME
 	else:
 		lose_match("You were swept away. No resurgence in the endgame.")
 
 func _check_squads() -> void:
+	var my_squad := _my_squad()
 	var alive_squads: Array[String] = []
 	for id in SQUADS:
 		if _eliminated[id]:
@@ -217,16 +244,16 @@ func _check_squads() -> void:
 				pending = true
 				break
 		var living := _squad_alive_count(id)
-		if id == "green_army" and _player_respawn > 0.0:
+		if id == my_squad and _player_respawn > 0.0:
 			pending = true
 		if living == 0 and (not pending or not _respawns_allowed()):
 			_eliminated[id] = true
 			Events.notify.emit("%s squad ELIMINATED. %d remain." % [id.to_upper().replace("_", " "), 4 - _count_eliminated()])
 		else:
 			alive_squads.append(id)
-	if _eliminated["green_army"]:
-		lose_match("Green squad eliminated.")
-	elif alive_squads.size() == 1 and alive_squads[0] == "green_army":
+	if _eliminated.get(my_squad, false):
+		lose_match("Your squad eliminated.")
+	elif alive_squads.size() == 1 and alive_squads[0] == my_squad:
 		win_match("VICTORY ROYALE — LAST SQUAD STANDING")
 
 func _count_eliminated() -> int:

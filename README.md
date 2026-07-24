@@ -23,6 +23,18 @@ A headless CI smoke test is built in:
 godot --path . -- --smoketest
 ```
 
+## Online PvP
+
+Every GAME MODE (Skirmish, Battle Royale, Tank Battle, Paper Plane Race, Hold the Dune)
+supports online humans. Offline still plays vs bots; online, bots fill empty team slots.
+
+1. **Host (desktop):** GAME MODES → ONLINE PVP → HOST ROOM. Share the `IP:9080` address.
+2. **Join:** friends enter `ws://IP:9080` (use `wss://` if joining from an HTTPS page).
+3. Pick team + ready. Host picks mode and hits **START MATCH**.
+4. Dedicated/listen server: `powershell tools/run_online_server.ps1` (WebSocket port **9080**).
+
+Browsers cannot host sockets — web clients always join a desktop host or the dedicated server.
+
 ## Controls
 
 | Input | Action |

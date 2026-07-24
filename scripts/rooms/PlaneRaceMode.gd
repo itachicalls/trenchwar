@@ -74,14 +74,42 @@ func _build_arena() -> void:
 func _setup_mode() -> void:
 	Missions.start_mission("PAPER PLANE RACE")
 	_build_course()
-	_plane = spawn_plane(Vector3(-arena_half + 12, 9, 0), 90.0)
+	var lane := 0
+	if Net.is_online:
+		var ids: Array = Net.peers.keys()
+		ids.sort()
+		lane = ids.find(Net.my_id())
+		if lane < 0:
+			lane = 0
+		Net.race_won.connect(_on_net_race_won)
+	var start := Vector3(-arena_half + 12, 9, float(lane) * 6.0 - 3.0)
+	_plane = spawn_plane(start, 90.0)
 	_plane.lock_bail = true
-	var player := spawn_player(Vector3(-arena_half + 12, 1, 4))
+	var pad := start + Vector3(0, -8, 0)
+	var player: Player
+	if Net.is_online:
+		player = spawn_online_humans({
+			"green_army": pad,
+			"chrome_legion": pad,
+			"brick_kingdom": pad,
+			"wind_up_empire": pad,
+		})
+	else:
+		player = spawn_player(pad + Vector3(0, 0, 4))
 	_plane.call_deferred("force_board", player)
 	_started = true
 	_update_banner()
-	sub_banner.text = "THREAD THE HOOPS IN ORDER  •  W THROTTLE  •  A/D TURN"
+	sub_banner.text = ("ONLINE RACE  •  FIRST THROUGH ALL HOOPS WINS" if Net.is_online
+		else "THREAD THE HOOPS IN ORDER  •  W THROTTLE  •  A/D TURN")
 	Events.notify.emit("AIR RACE: follow the green gate. Bright sky circuit — stay high and thread them!")
+
+func _on_net_race_won(peer_id: int) -> void:
+	if _match_over or _finished:
+		return
+	_finished = true
+	if peer_id == Net.my_id():
+		return
+	lose_match("%s finished the circuit first." % Net.name_for_peer(peer_id))
 
 func _build_course() -> void:
 	# Premade clutter as visual islands (landable, not flight blockers in the lane).
@@ -190,6 +218,8 @@ func _on_hoop_body(body: Node, area: Area3D) -> void:
 	Events.notify.emit("HOOP %d / %d" % [_next, HOOP_COUNT])
 	if _next >= HOOP_COUNT:
 		_finished = true
+		if Net.is_online:
+			Net.announce_race_win()
 		var bonus := maxi(0, int(_time_left) * 2)
 		Game.coins += 20 + bonus
 		Events.coins_changed.emit(Game.coins)

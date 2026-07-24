@@ -16,6 +16,7 @@ config/icon="res://icon.svg"
 Events="*res://autoload/Events.gd"
 Game="*res://autoload/Game.gd"
 Missions="*res://autoload/Missions.gd"
+Net="*res://autoload/Net.gd"
 Sfx="*res://autoload/Sfx.gd"
 
 [display]

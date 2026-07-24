@@ -95,6 +95,7 @@ func _unit_ready() -> void:
 
 	_build_jetpack()
 
+	add_to_group("team_" + faction.id)
 	Events.player_spawned.emit(self)
 	Events.fuel_changed.emit(fuel, FUEL_MAX)
 	Events.player_health_changed.emit(health.current, health.max_health)
@@ -317,7 +318,12 @@ func _physics_process(delta: float) -> void:
 			velocity.z = move_toward(velocity.z, 0.0, 20.0 * delta)
 			move_and_slide()
 		return
-	if current_vehicle != null or not Game.is_playing():
+	if current_vehicle != null:
+		if Net.is_online and Game.is_playing() and current_vehicle is Node3D:
+			Net.broadcast_pose((current_vehicle as Node3D).global_position,
+				(current_vehicle as Node3D).rotation.y, velocity)
+		return
+	if not Game.is_playing():
 		return
 	_fold_node_yaw()
 	_consume_touch_look()
@@ -330,6 +336,8 @@ func _physics_process(delta: float) -> void:
 	_update_interactions()
 	_update_regen(delta)
 	_update_powerups(delta)
+	if Net.is_online:
+		Net.broadcast_pose(global_position, _yaw, velocity)
 
 ## Battlefield-style recovery: stay out of fire for a few seconds and
 ## health climbs back, so one bad firefight isn't a death sentence.
@@ -398,9 +406,11 @@ func _is_hostile(c: Object) -> bool:
 	var n := c as Node
 	if n.is_in_group("enemies") or n.is_in_group("chrome_pods"):
 		return true
-	# Arena bots: anything on a faction hostile to ours.
-	return n.is_in_group("combat_bots") and "faction" in n and n.faction != null \
-		and faction.hostile_to(n.faction)
+	# Arena bots + online human puppets: hostile factions only.
+	if (n.is_in_group("combat_bots") or n.is_in_group("net_players")) \
+			and "faction" in n and n.faction != null and faction.hostile_to(n.faction):
+		return true
+	return false
 
 ## Aim assist / lock. Campaign gets a sticky lock with mild camera magnetism;
 ## arenas stay lighter so PvE skirmish still rewards aim.
@@ -757,6 +767,8 @@ func _on_died(_attacker: Node) -> void:
 	get_tree().create_timer(1.1, true, false, true).timeout.connect(func():
 		Engine.time_scale = 1.0
 		Fx.plastic_shatter(self, global_position + Vector3.UP * 0.7, faction.primary_color)
+		if Net.is_online:
+			Net.announce_down()
 		Events.unit_died.emit(self)
 		Events.player_died.emit()
 		queue_free())
