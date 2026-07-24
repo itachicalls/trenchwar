@@ -22,7 +22,12 @@ var _last_pos := Vector3.ZERO
 func _unit_ready() -> void:
 	add_to_group("green_allies")
 	captive = starts_captive
-	# Own layer: enemy fire still hits mates, but the player never collides
+	# Tougher than baseline troopers — they were dying before you could E them,
+	# soft-locking rescue objectives.
+	base_health = 220.0
+	if health != null:
+		health.setup(base_health * faction.health_multiplier)
+	# Own layer: enemy fire still hits free mates, but the player never collides
 	# with them — a squadmate can never body-block your movement.
 	collision_layer = 0b1000
 	collision_mask = 0b1111   # still collides with world, units and each other
@@ -47,6 +52,20 @@ func _unit_ready() -> void:
 		add_child(_prompt)
 		set_physics_process(true)
 
+## Prisoners can't be sniped out of the mission — splash/enemy fire ignored
+## until they're freed. Prevents rescue objectives from soft-locking.
+func take_damage(amount: float, attacker: Node = null) -> void:
+	if captive:
+		return
+	super.take_damage(amount * 0.65, attacker)   # free mates still tougher
+
+func _on_died(attacker: Node) -> void:
+	# Safety net: if a captive somehow dies, shrink the rescue quota.
+	if captive:
+		Missions.forgive("rescue", 1)
+		Events.notify.emit("A pinned soldier was lost — objective updated.")
+	super._on_died(attacker)
+
 func rescue() -> void:
 	if not captive:
 		return
@@ -56,6 +75,9 @@ func rescue() -> void:
 	if _prompt != null:
 		_prompt.queue_free()
 		_prompt = null
+	# Brief get-up shield so the firefight that pinned them doesn't erase them.
+	if health != null:
+		health.heal(health.max_health)
 	Game.add_squad_member(self)
 	Sfx.play("pickup")
 	Events.notify.emit("Squadmate rescued! [1] Follow  [2] Hold  [3] Charge")

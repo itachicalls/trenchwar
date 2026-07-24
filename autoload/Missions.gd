@@ -60,6 +60,20 @@ func complete(id: String) -> void:
 	_finish(o)
 	Events.objectives_changed.emit()
 
+## Drop the remaining quota when a rescue target is lost so the mission
+## cannot soft-lock (prefer keeping captives alive — this is a safety net).
+func forgive(id: String, amount: int = 1) -> void:
+	var o := _find(id)
+	if o == null or o.done or amount <= 0:
+		return
+	o.count_needed = maxi(o.count_done, o.count_needed - amount)
+	if o.count_needed <= 0:
+		o.count_needed = 1
+		o.count_done = 1
+	if o.count_done >= o.count_needed:
+		_finish(o)
+	Events.objectives_changed.emit()
+
 func is_done(id: String) -> bool:
 	var o := _find(id)
 	return o != null and o.done

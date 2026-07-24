@@ -259,6 +259,10 @@ func _acquire_target() -> Node3D:
 	candidates.append_array(get_tree().get_nodes_in_group("green_allies"))
 	for c in candidates:
 		if c is Node3D and is_instance_valid(c) and not (c.has_method("is_dead") and c.is_dead()):
+			# Skip captives — executing pinned prisoners was soft-locking rescue
+			# missions before the player could reach them.
+			if c is SquadMate and (c as SquadMate).captive:
+				continue
 			var d := global_position.distance_to(c.global_position)
 			if d < best_dist:
 				best_dist = d
