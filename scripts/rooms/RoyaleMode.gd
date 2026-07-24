@@ -171,18 +171,19 @@ func _squad_alive_count(id: String) -> int:
 
 func _run_respawns(delta: float) -> void:
 	var my_squad := _my_squad()
-	for job in _pending.duplicate():
-		job.t -= delta
-		if job.t <= 0.0:
-			_pending.erase(job)
-			if not _respawns_allowed() or _eliminated[job.id] or _squad_alive_count(job.id) == 0:
-				continue
-			if job.get("human", false):
-				continue
-			var pos := _drop_point(job.id)
-			spawn_bot(SQUADS[job.id], pos, job.variant)
-			if job.id == my_squad:
-				Events.notify.emit("Squadmate redeployed!")
+	if not Net.is_online or Net.is_match_authority():
+		for job in _pending.duplicate():
+			job.t -= delta
+			if job.t <= 0.0:
+				_pending.erase(job)
+				if not _respawns_allowed() or _eliminated[job.id] or _squad_alive_count(job.id) == 0:
+					continue
+				if job.get("human", false):
+					continue
+				var pos := _drop_point(job.id)
+				spawn_bot(SQUADS[job.id], pos, job.variant)
+				if job.id == my_squad:
+					Events.notify.emit("Squadmate redeployed!")
 	if _player_respawn > 0.0:
 		_player_respawn -= delta
 		banner.text = "RESURGENCE IN %d..." % ceili(_player_respawn)
@@ -204,12 +205,16 @@ func _drop_point(id: String) -> Vector3:
 func _on_arena_unit_died(unit: Node) -> void:
 	if _match_over:
 		return
+	if Net.is_online and not Net.is_match_authority():
+		return
 	var fid := ""
 	var variant := "trooper"
 	if unit is CombatBot:
 		fid = unit.faction.id
 		variant = unit.variant
 	elif unit is RemoteSoldier and unit.faction != null:
+		fid = unit.faction.id
+	elif unit is RemoteBot and unit.faction != null:
 		fid = unit.faction.id
 	else:
 		return
@@ -220,7 +225,6 @@ func _on_arena_unit_died(unit: Node) -> void:
 	if unit is CombatBot:
 		_pending.append({"id": fid, "t": RESPAWN_TIME, "variant": variant})
 	elif unit is RemoteSoldier:
-		# Grace window while that human redeploys on their machine.
 		_pending.append({"id": fid, "t": RESPAWN_TIME, "variant": variant, "human": true})
 
 func _on_player_died() -> void:
@@ -229,10 +233,12 @@ func _on_player_died() -> void:
 	var my_squad := _my_squad()
 	if _respawns_allowed() and _squad_alive_count(my_squad) > 0:
 		_player_respawn = RESPAWN_TIME
-	else:
+	elif not Net.is_online:
 		lose_match("You were swept away. No resurgence in the endgame.")
 
 func _check_squads() -> void:
+	if Net.is_online and not Net.is_match_authority():
+		return
 	var my_squad := _my_squad()
 	var alive_squads: Array[String] = []
 	for id in SQUADS:
@@ -246,15 +252,22 @@ func _check_squads() -> void:
 		var living := _squad_alive_count(id)
 		if id == my_squad and _player_respawn > 0.0:
 			pending = true
+		# Online: also treat human respawn grace via pending human jobs.
 		if living == 0 and (not pending or not _respawns_allowed()):
 			_eliminated[id] = true
 			Events.notify.emit("%s squad ELIMINATED. %d remain." % [id.to_upper().replace("_", " "), 4 - _count_eliminated()])
 		else:
 			alive_squads.append(id)
-	if _eliminated.get(my_squad, false):
+	if alive_squads.size() == 1:
+		var winner: String = alive_squads[0]
+		if Net.is_online:
+			Net.broadcast_squad_win(winner, "VICTORY ROYALE — LAST SQUAD STANDING")
+		elif winner == my_squad:
+			win_match("VICTORY ROYALE — LAST SQUAD STANDING")
+		else:
+			lose_match("Your squad eliminated.")
+	elif _eliminated.get(my_squad, false) and not Net.is_online:
 		lose_match("Your squad eliminated.")
-	elif alive_squads.size() == 1 and alive_squads[0] == my_squad:
-		win_match("VICTORY ROYALE — LAST SQUAD STANDING")
 
 func _count_eliminated() -> int:
 	var n := 0

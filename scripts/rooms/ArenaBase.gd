@@ -15,7 +15,10 @@ var sub_banner: Label
 var _match_over := false
 ## peer_id -> RemoteSoldier puppets for online humans
 var _net_remotes: Dictionary = {}
-var _net_pose_acc := 0.0
+## bot_id -> CombatBot (authority) or RemoteBot (clients)
+var _net_bots: Dictionary = {}
+var _next_bot_id := 1
+var _bot_sync_cd := 0.0
 
 func _ready() -> void:
 	Game.mode_respawns = true
@@ -23,7 +26,14 @@ func _ready() -> void:
 	_setup_nav()
 	_build_lighting()
 	_build_arena()
-	_build_mode_ui()
+	if not Net.is_dedicated:
+		_build_mode_ui()
+	else:
+		# Headless still needs banner labels for mode scripts that write text.
+		banner = Label.new()
+		sub_banner = Label.new()
+		add_child(banner)
+		add_child(sub_banner)
 	_setup_mode()          # subclass: spawn combatants, set rules
 	_bake_navmesh()
 	Events.unit_died.connect(_on_arena_unit_died)
@@ -32,15 +42,45 @@ func _ready() -> void:
 		Net.peer_pose.connect(_on_net_pose)
 		Net.peer_hurt.connect(_on_net_hurt)
 		Net.peer_down.connect(_on_net_down)
-	tree_exiting.connect(func():
-		Game.mode_respawns = false
-		if Net.is_online:
-			if Net.peer_pose.is_connected(_on_net_pose):
-				Net.peer_pose.disconnect(_on_net_pose)
-			if Net.peer_hurt.is_connected(_on_net_hurt):
-				Net.peer_hurt.disconnect(_on_net_hurt)
-			if Net.peer_down.is_connected(_on_net_down):
-				Net.peer_down.disconnect(_on_net_down))
+		Net.bot_spawned.connect(_on_bot_spawned)
+		Net.bot_pose.connect(_on_bot_pose)
+		Net.bot_hurt.connect(_on_bot_hurt)
+		Net.bot_died.connect(_on_bot_died)
+		Net.match_ended.connect(_on_net_match_ended)
+		Net.squad_match_ended.connect(_on_squad_match_ended)
+		Net.score_synced.connect(_on_score_synced)
+	tree_exiting.connect(_teardown_net)
+
+func _teardown_net() -> void:
+	Game.mode_respawns = false
+	if not Net.is_online:
+		return
+	for sig in [
+		[Net.peer_pose, _on_net_pose], [Net.peer_hurt, _on_net_hurt], [Net.peer_down, _on_net_down],
+		[Net.bot_spawned, _on_bot_spawned], [Net.bot_pose, _on_bot_pose], [Net.bot_hurt, _on_bot_hurt],
+		[Net.bot_died, _on_bot_died], [Net.match_ended, _on_net_match_ended],
+		[Net.squad_match_ended, _on_squad_match_ended], [Net.score_synced, _on_score_synced],
+	]:
+		if sig[0].is_connected(sig[1]):
+			sig[0].disconnect(sig[1])
+
+func _process(delta: float) -> void:
+	super(delta)
+	if not Net.is_online or not Net.is_match_authority() or _match_over:
+		return
+	_bot_sync_cd -= delta
+	if _bot_sync_cd > 0.0:
+		return
+	_bot_sync_cd = 0.1
+	for id in _net_bots.keys():
+		var bot = _net_bots[id]
+		if bot == null or not is_instance_valid(bot):
+			continue
+		if bot is CombatBot and not bot.is_dead():
+			var yaw: float = bot.rotation.y
+			if bot.body_rig != null:
+				yaw = bot.body_rig.rotation.y
+			Net.broadcast_bot_pose(int(id), bot.global_position, yaw)
 
 ## Death spectator view: the player node (and its camera) is freed on death,
 ## so cut to a high angle over the arena until the respawn.
@@ -210,19 +250,21 @@ func spawn_player(pos: Vector3) -> Player:
 
 ## Spawn the local human at their team base and remote puppets for other peers.
 ## `bases` maps faction id -> spawn Vector3.
+## Dedicated server: no local Player — only remotes so AI can hunt humans.
 func spawn_online_humans(bases: Dictionary) -> Player:
+	if Net.is_online:
+		for id in Net.peers.keys():
+			var pid: int = int(id)
+			if not Net.is_dedicated and pid == Net.my_id():
+				continue
+			_ensure_remote(pid, bases)
+	if Net.is_dedicated:
+		return null
 	var team := Net.local_team if Net.is_online else "green_army"
 	if not bases.has(team):
 		team = "green_army"
 	var base: Vector3 = bases.get(team, Vector3.ZERO)
-	var player := spawn_player(base + Vector3(0, 0, randf_range(-2, 2)))
-	if Net.is_online:
-		for id in Net.peers.keys():
-			var pid: int = int(id)
-			if pid == Net.my_id():
-				continue
-			_ensure_remote(pid, bases)
-	return player
+	return spawn_player(base + Vector3(0, 0, randf_range(-2, 2)))
 
 func _team_bases_default() -> Dictionary:
 	return {
@@ -275,31 +317,110 @@ func _on_net_down(peer_id: int) -> void:
 ## Team-aware match end for online PvP (both sides see a correct outcome).
 func resolve_team_match(green_won: bool, win_title: String, lose_reason: String) -> void:
 	if Net.is_online:
-		var i_am_green := Net.local_team == "green_army"
-		if green_won == i_am_green:
-			win_match(win_title)
-		else:
-			lose_match(lose_reason)
-	elif green_won:
+		if not Net.is_match_authority():
+			return
+		Net.broadcast_match_end(green_won, win_title, lose_reason)
+		return
+	if green_won:
 		win_match(win_title)
 	else:
 		lose_match(lose_reason)
 
+func _on_net_match_ended(green_won: bool, win_title: String, lose_reason: String) -> void:
+	if _match_over:
+		return
+	if Net.is_dedicated:
+		_match_over = true
+		Game.mode_respawns = false
+		return
+	var i_am_green := Net.local_team == "green_army"
+	if green_won == i_am_green:
+		win_match(win_title)
+	else:
+		lose_match(lose_reason)
+
+func _on_squad_match_ended(winner_squad: String, win_title: String) -> void:
+	if _match_over:
+		return
+	if Net.is_dedicated:
+		_match_over = true
+		Game.mode_respawns = false
+		return
+	if Net.local_team == winner_squad:
+		win_match(win_title)
+	else:
+		lose_match("%s wins the sandbox." % winner_squad.replace("_", " ").capitalize())
+
+func _on_score_synced(green_score: int, chrome_score: int) -> void:
+	if banner != null:
+		banner.text = "GREEN  %d   —   %d  CHROME" % [green_score, chrome_score]
+
 func bot_slots(base_count: int, team: String) -> int:
+	# Clients never simulate bots — authority fills slots.
+	if Net.is_online and not Net.is_match_authority():
+		return 0
 	if not Net.is_online:
 		return base_count
 	return maxi(0, base_count - Net.humans_on_team(team))
 
 func spawn_bot(faction_path: String, pos: Vector3, variant_name: String = "trooper") -> CombatBot:
+	if Net.is_online and not Net.is_match_authority():
+		return null
 	var bot := CombatBot.new()
 	bot.faction = load(faction_path)
 	bot.variant = variant_name
-	# Wander between own spawn and mid-field so bots seek fights.
 	var wander: Array[Vector3] = [pos, pos * 0.3, Vector3(randf_range(-12, 12), 0, randf_range(-12, 12))]
 	bot.patrol_points = wander
 	add_child(bot)
 	bot.position = pos
+	if Net.is_online and Net.is_match_authority():
+		var bid := _next_bot_id
+		_next_bot_id += 1
+		bot.set_meta("net_bot_id", bid)
+		_net_bots[bid] = bot
+		bot.health.died.connect(func(_a): _authority_bot_died(bid))
+		var team_id := bot.faction.id if bot.faction else "chrome_legion"
+		Net.spawn_bot_net(bid, team_id, pos, variant_name)
 	return bot
+
+func _authority_bot_died(bot_id: int) -> void:
+	Net.announce_bot_death(bot_id)
+	_net_bots.erase(bot_id)
+
+func _on_bot_spawned(bot_id: int, team: String, pos: Vector3, variant: String) -> void:
+	if Net.is_match_authority():
+		return
+	if _net_bots.has(bot_id) and is_instance_valid(_net_bots[bot_id]):
+		return
+	var puppet := RemoteBot.new()
+	puppet.bot_id = bot_id
+	puppet.faction = load(Net.faction_path(team))
+	puppet.variant = variant
+	add_child(puppet)
+	puppet.global_position = pos
+	_net_bots[bot_id] = puppet
+
+func _on_bot_pose(bot_id: int, pos: Vector3, yaw: float) -> void:
+	if Net.is_match_authority():
+		return
+	var b = _net_bots.get(bot_id)
+	if b is RemoteBot and is_instance_valid(b):
+		b.apply_net_pose(pos, yaw)
+
+func _on_bot_hurt(bot_id: int, amount: float) -> void:
+	if not Net.is_match_authority():
+		return
+	var b = _net_bots.get(bot_id)
+	if b is CombatBot and is_instance_valid(b) and not b.is_dead():
+		b.take_damage(amount, null)
+
+func _on_bot_died(bot_id: int) -> void:
+	if Net.is_match_authority():
+		return
+	var b = _net_bots.get(bot_id)
+	if b is RemoteBot and is_instance_valid(b):
+		b.mark_dead()
+	_net_bots.erase(bot_id)
 
 func spawn_tank(pos: Vector3, yaw_deg: float = 0.0, ai_team: String = "") -> ToyTank:
 	var tank := ToyTank.new()

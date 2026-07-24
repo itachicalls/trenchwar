@@ -55,6 +55,16 @@ func _process(delta: float) -> void:
 	super(delta)
 	if _match_over or not Game.is_playing():
 		return
+	if Net.is_online and not Net.is_match_authority():
+		if _player_respawn > 0.0:
+			_player_respawn -= delta
+			banner.text = "REDEPLOYING IN %d..." % ceili(_player_respawn)
+			if _player_respawn <= 0.0:
+				var team := Net.local_team
+				var base := _chrome_base() if team == "chrome_legion" else _green_base()
+				spawn_player(base + Vector3(0, 0, randf_range(-4, 4)))
+				_update_banner()
+		return
 	for job in _pending.duplicate():
 		job.t -= delta
 		if job.t <= 0.0:
@@ -75,6 +85,8 @@ func _process(delta: float) -> void:
 
 func _on_arena_unit_died(unit: Node) -> void:
 	if _match_over:
+		return
+	if Net.is_online and not Net.is_match_authority():
 		return
 	if unit is ToyTank and (unit as ToyTank).ai_controlled:
 		green_score += 1
@@ -101,18 +113,22 @@ func _on_arena_unit_died(unit: Node) -> void:
 func _on_player_died() -> void:
 	if _match_over:
 		return
-	var team := Net.local_team if Net.is_online else "green_army"
-	if team == "green_army":
-		chrome_score += 1
-	else:
-		green_score += 1
-	_update_banner()
-	_check_win()
+	# Dedicated authority scores via RemoteSoldier death; listen-host scores here.
+	if not Net.is_online or Net.is_match_authority():
+		var team := Net.local_team if Net.is_online else "green_army"
+		if team == "green_army":
+			chrome_score += 1
+		else:
+			green_score += 1
+		_update_banner()
+		_check_win()
 	if not _match_over:
 		_player_respawn = PLAYER_RESPAWN
 
 func _update_banner() -> void:
 	banner.text = "GREEN  %d   —   %d  CHROME" % [green_score, chrome_score]
+	if Net.is_online and Net.is_match_authority():
+		Net.broadcast_scores(green_score, chrome_score)
 
 func _check_win() -> void:
 	if green_score >= SCORE_TARGET:

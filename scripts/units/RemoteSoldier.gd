@@ -40,7 +40,8 @@ func _ready() -> void:
 	add_child(_label)
 
 func apply_net_pose(pos: Vector3, yaw: float, vel: Vector3) -> void:
-	global_position = pos
+	# Soft interpolate to hide jitter on overseas links.
+	global_position = global_position.lerp(pos, 0.65)
 	_yaw = yaw
 	velocity = vel
 	if body_rig != null:

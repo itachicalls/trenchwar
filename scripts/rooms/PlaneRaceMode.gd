@@ -86,18 +86,29 @@ func _setup_mode() -> void:
 	_plane = spawn_plane(start, 90.0)
 	_plane.lock_bail = true
 	var pad := start + Vector3(0, -8, 0)
-	var player: Player
-	if Net.is_online:
+	var player: Player = null
+	if Net.is_dedicated:
+		spawn_online_humans({
+			"green_army": pad, "chrome_legion": pad,
+			"brick_kingdom": pad, "wind_up_empire": pad,
+		})
+		# Dedicated only tracks remotes; humans fly on their own machines.
+		if is_instance_valid(_plane):
+			_plane.queue_free()
+		_plane = null
+	elif Net.is_online:
 		player = spawn_online_humans({
 			"green_army": pad,
 			"chrome_legion": pad,
 			"brick_kingdom": pad,
 			"wind_up_empire": pad,
 		})
+		if player != null:
+			_plane.call_deferred("force_board", player)
 	else:
 		player = spawn_player(pad + Vector3(0, 0, 4))
-	_plane.call_deferred("force_board", player)
-	_started = true
+		_plane.call_deferred("force_board", player)
+	_started = not Net.is_dedicated
 	_update_banner()
 	sub_banner.text = ("ONLINE RACE  •  FIRST THROUGH ALL HOOPS WINS" if Net.is_online
 		else "THREAD THE HOOPS IN ORDER  •  W THROTTLE  •  A/D TURN")

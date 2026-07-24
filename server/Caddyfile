@@ -1,0 +1,13 @@
+# TLS termination for worldwide wss:// clients (Vercel HTTPS pages require this).
+# Replace play.example.com with your DNS name pointing at this host.
+#
+# docker compose: reverse_proxy targets the "game" service.
+# bare VPS + local Godot: change to 127.0.0.1:9080
+
+{
+	email {$CADDY_EMAIL:admin@example.com}
+}
+
+play.example.com {
+	reverse_proxy game:9080
+}

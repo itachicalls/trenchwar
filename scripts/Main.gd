@@ -789,38 +789,63 @@ func _show_modes() -> void:
 # ---------------------------------------------------------------- ONLINE PVP
 
 var _online_addr: LineEdit
+var _online_code: LineEdit
+var _show_advanced_join := false
 var _lobby_refreshing := false
 
 func _show_online_lobby() -> void:
-	var box := _menu_base(0.72)
+	var box := _menu_base(0.74)
 	_title(box, "ONLINE PVP", 36 if Game.compact_ui() else 44, UiTheme.AMBER)
 	_subtitle(box, Net.status_text, 14, Color(0.8, 0.85, 0.7))
 	_spacer(box, 8)
 	if not Net.is_online:
-		_subtitle(box, "Desktop hosts a room. Web joins with ws://IP:9080 (wss:// if the page is HTTPS).", 13, Color(0.7, 0.72, 0.65))
+		_subtitle(box, "Play worldwide via the public server. Mobile & web join — they cannot host.", 13, Color(0.7, 0.72, 0.65))
 		_spacer(box, 8)
-		if Net.can_host():
-			_button(box, "HOST ROOM  (port %d)" % Net.DEFAULT_PORT, func():
-				var err := Net.host_game(Net.DEFAULT_PORT, Net.selected_mode)
-				if err == OK:
-					_show_online_lobby(), UiTheme.GREEN)
-		else:
-			_subtitle(box, "This browser can't host — join a desktop host or run tools/run_online_server.ps1", 13, UiTheme.CYAN)
-		_spacer(box, 6)
-		_subtitle(box, "JOIN ADDRESS", 12, Color(0.55, 0.7, 0.85))
-		_online_addr = LineEdit.new()
-		_online_addr.placeholder_text = "ws://192.168.x.x:9080"
-		_online_addr.text = "ws://127.0.0.1:%d" % Net.DEFAULT_PORT
-		_online_addr.custom_minimum_size = Vector2(_menu_width(), 48 if Game.compact_ui() else 40)
-		_online_addr.alignment = HORIZONTAL_ALIGNMENT_CENTER
-		box.add_child(_online_addr)
-		_spacer(box, 6)
-		_button(box, "JOIN ROOM", func():
-			var addr := _online_addr.text if _online_addr != null else ""
-			Net.join_game(addr)
+		_button(box, "QUICK PLAY", func():
+			Net.quick_play(Net.selected_mode)
+			_show_online_lobby(), UiTheme.GREEN)
+		_spacer(box, 4)
+		_subtitle(box, "JOIN WITH ROOM CODE", 12, Color(0.55, 0.7, 0.85))
+		_online_code = LineEdit.new()
+		_online_code.placeholder_text = "ABCD"
+		_online_code.custom_minimum_size = Vector2(_menu_width(), 48 if Game.compact_ui() else 40)
+		_online_code.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_online_code.max_length = 6
+		box.add_child(_online_code)
+		_button(box, "JOIN CODE", func():
+			var code := _online_code.text if _online_code != null else ""
+			Net.join_room_code(code)
 			_show_online_lobby(), UiTheme.CYAN)
+		_spacer(box, 6)
+		_button(box, "CREATE / ENTER PUBLIC LOBBY", func():
+			Net.create_public_room(Net.selected_mode)
+			_show_online_lobby(), UiTheme.AMBER)
+		_spacer(box, 8)
+		_button(box, "ADVANCED: %s" % ("HIDE" if _show_advanced_join else "LAN / CUSTOM URL"), func():
+			_show_advanced_join = not _show_advanced_join
+			_show_online_lobby())
+		if _show_advanced_join:
+			_subtitle(box, "LAN desktop host or custom ws/wss URL", 12, Color(0.6, 0.65, 0.6))
+			if Net.can_host():
+				_button(box, "HOST LAN ROOM  (port %d)" % Net.DEFAULT_PORT, func():
+					var err := Net.host_game(Net.DEFAULT_PORT, Net.selected_mode, false)
+					if err == OK:
+						_show_online_lobby(), UiTheme.GREEN)
+			_online_addr = LineEdit.new()
+			_online_addr.placeholder_text = Net.public_ws_url()
+			_online_addr.text = "ws://127.0.0.1:%d" % Net.DEFAULT_PORT
+			_online_addr.custom_minimum_size = Vector2(_menu_width(), 48 if Game.compact_ui() else 40)
+			_online_addr.alignment = HORIZONTAL_ALIGNMENT_CENTER
+			box.add_child(_online_addr)
+			_button(box, "JOIN URL", func():
+				var addr := _online_addr.text if _online_addr != null else ""
+				Net.join_game(addr)
+				_show_online_lobby(), UiTheme.CYAN)
+		_spacer(box, 6)
+		_subtitle(box, "Server: %s" % Net.public_ws_url(), 11, Color(0.5, 0.55, 0.5))
 	else:
-		_subtitle(box, "ROOM  %s" % Net.host_address_hint(), 16, UiTheme.CYAN)
+		_subtitle(box, "ROOM CODE  %s" % Net.room_code, 18, UiTheme.CYAN)
+		_subtitle(box, "Share this code with friends worldwide.", 12, Color(0.7, 0.75, 0.65))
 		_spacer(box, 6)
 		_subtitle(box, "TEAM", 12, Color(0.55, 0.7, 0.85))
 		var teams := [
@@ -838,12 +863,12 @@ func _show_online_lobby() -> void:
 				Net.set_team(t[1])
 				_show_online_lobby(), t[2])
 		_spacer(box, 6)
-		if Net.is_host:
+		if Net.is_lobby_leader() or Net.is_host:
 			_subtitle(box, "MODE", 12, Color(0.55, 0.7, 0.85))
 			for mode_id in ["skirmish", "royale", "tank_battle", "plane_race", "hold_dune"]:
 				var label: String = MISSIONS[mode_id][0]
-				var mark := "  ✓" if Net.selected_mode == mode_id else ""
-				_button(box, label + mark, func():
+				var mark2 := "  ✓" if Net.selected_mode == mode_id else ""
+				_button(box, label + mark2, func():
 					Net.set_mode(mode_id)
 					_show_online_lobby())
 		else:
@@ -865,20 +890,16 @@ func _show_online_lobby() -> void:
 		_button(box, "READY: %s" % ("YES" if ready_now else "NO"), func():
 			Net.set_ready(not ready_now)
 			_show_online_lobby(), UiTheme.AMBER)
-		if Net.is_host:
+		if Net.is_lobby_leader() or Net.is_host:
 			_button(box, "START MATCH", func():
 				Game.capture_mouse()
-				Net.host_start_match(), UiTheme.GREEN)
+				Net.request_start_match(), UiTheme.GREEN)
 		_spacer(box, 6)
 		_button(box, "LEAVE ROOM", func():
 			Net.reset()
 			_show_online_lobby(), UiTheme.RED)
 	_spacer(box, 10)
-	_button(box, "BACK", func():
-		if not Net.is_online:
-			_show_modes()
-		else:
-			_show_modes())
+	_button(box, "BACK", _show_modes)
 
 func _on_net_lobby_changed() -> void:
 	# Refresh lobby UI if it's currently open (avoid stomping other menus).

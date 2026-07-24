@@ -83,9 +83,9 @@ func _process(delta: float) -> void:
 	_time_left -= delta
 	_wave_cd -= delta
 	if _wave_cd <= 0.0:
-		_spawn_wave()
-		# Relentless cadence — shortens as pressure mounts.
 		_wave_cd = maxf(9.0 - _wave * 0.45, 4.2 if Game.low_gfx() else 3.6)
+		if not Net.is_online or Net.is_match_authority():
+			_spawn_wave()
 	_chrome_scan_cd -= delta
 	if _chrome_scan_cd <= 0.0:
 		_chrome_scan_cd = 0.25 if Game.low_gfx() else 0.15
@@ -207,6 +207,8 @@ func _spawn_wave() -> void:
 ## Chrome that paths straight at the mound (not random mid-field wander).
 func _spawn_rusher(pos: Vector3, variant_name: String) -> CombatBot:
 	var bot := spawn_bot(CHROME, pos, variant_name)
+	if bot == null:
+		return null
 	# Approach lanes → mound crest. Avoids aimless circles into sandbox clutter.
 	var approach := pos.normalized() * 8.0
 	approach.y = 1.0

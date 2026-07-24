@@ -1,0 +1,39 @@
+# Worldwide play stack: Godot game server + Caddy (Let's Encrypt → wss://).
+#
+# 1. Edit Caddyfile: set your real hostname (play.yourdomain.com)
+# 2. Set CADDY_EMAIL
+# 3. Point DNS A/AAAA at this machine
+# 4. docker compose -f server/docker-compose.yml up -d --build
+#
+# Clients (Vercel / mobile): Quick Play → wss://play.yourdomain.com
+
+services:
+  game:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    expose:
+      - "9080"
+    environment:
+      TRENCHWAR_PORT: "9080"
+      TRENCHWAR_DEDICATED: "1"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CADDY_EMAIL: ${CADDY_EMAIL:-admin@example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - game
+
+volumes:
+  caddy_data:
+  caddy_config:

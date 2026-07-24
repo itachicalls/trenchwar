@@ -48,6 +48,18 @@ func _acquire_target() -> Node3D:
 		var pd := global_position.distance_to(hunt.global_position)
 		if pd < best_dist:
 			best = hunt
+	# Dedicated server: hunt networked human puppets.
+	for n in get_tree().get_nodes_in_group("net_players"):
+		if not (n is Node3D) or not is_instance_valid(n):
+			continue
+		if "faction" in n and n.faction != null and not faction.hostile_to(n.faction):
+			continue
+		if n.has_method("is_dead") and n.is_dead():
+			continue
+		var nd := global_position.distance_to((n as Node3D).global_position)
+		if nd < best_dist:
+			best_dist = nd
+			best = n
 	return best
 
 ## Hold-the-Dune / assault spawn: path to the mound instead of idle-patrolling.

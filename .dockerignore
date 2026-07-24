@@ -1,0 +1,11 @@
+.godot/
+.git/
+tools/
+web/
+_tmp_kenney/
+build/
+smoke_log.txt
+screenshots/
+*.tmp
+export_presets.cfg
+**/*.uid

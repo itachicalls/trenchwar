@@ -30,13 +30,17 @@ func _setup_mode() -> void:
 	var team := Net.local_team if Net.is_online else "green_army"
 	var base := _chrome_base() if team == "chrome_legion" else _green_base()
 	var yaw := -90.0 if team == "chrome_legion" else 90.0
-	_player_tank = spawn_tank(base, yaw)
-	var player: Player
+	var player: Player = null
 	if Net.is_online:
 		player = spawn_online_humans({"green_army": _green_base(), "chrome_legion": _chrome_base()})
 	else:
 		player = spawn_player(base)
-	_player_tank.call_deferred("force_board", player)
+	if Net.is_dedicated:
+		_player_tank = null
+	else:
+		_player_tank = spawn_tank(base, yaw)
+		if player != null:
+			_player_tank.call_deferred("force_board", player)
 	var enemy_tanks := bot_slots(3 if Game.low_gfx() else 4, "chrome_legion")
 	# Chrome humans replace some AI hulls; always keep at least one AI if solo green.
 	if Net.is_online and Net.humans_on_team("chrome_legion") > 0:
@@ -154,6 +158,8 @@ func _on_player_died() -> void:
 
 func _update_banner() -> void:
 	banner.text = "GREEN ARMOR  %d   —   %d  CHROME" % [green_score, chrome_score]
+	if Net.is_online and Net.is_match_authority():
+		Net.broadcast_scores(green_score, chrome_score)
 
 func _check_win() -> void:
 	if green_score >= SCORE_TARGET:
