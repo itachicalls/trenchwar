@@ -57,12 +57,27 @@ const MISSIONS := {
 	"skirmish": [
 		"SKIRMISH  —  Team Deathmatch (vs bots)",
 		preload("res://scripts/rooms/SkirmishMode.gd"),
-		"THE SANDBOX. Green Army versus Chrome Legion, full squads, everyone\nrespawns. First team to 25 eliminations owns the arena.\n\nCasual rules: your enemies are bots. Warm up here.",
+		"THE SANDBOX. Green Army versus Chrome Legion, full squads, everyone\nrespawns. First team to 25 eliminations owns the arena.\n\nTanks and a paper plane spawn mid-field. Casual rules — bots only.",
 	],
 	"royale": [
 		"BATTLE ROYALE  —  Resurgence (vs bots)",
 		preload("res://scripts/rooms/RoyaleMode.gd"),
-		"Four toy squads drop into the Sandbox. The cleanup zone closes in —\nanyone caught outside gets swept.\n\nRESURGENCE RULES: while one squadmate stands, the fallen redeploy.\nIn the final circles, respawns go dark. Last squad standing wins.",
+		"Four toy squads drop into the Sandbox. The cleanup zone closes in —\nanyone caught outside gets swept.\n\nRESURGENCE: fallen return while a teammate stands. Final circles cut\nrespawns. Armor and a plane are up for grabs. Last squad wins.",
+	],
+	"tank_battle": [
+		"TANK BATTLE  —  Armor duel (vs bots)",
+		preload("res://scripts/rooms/TankBattleMode.gd"),
+		"Deploy already boarded. Chrome AI tanks hunt the sandbox while infantry\nskirmishes the flanks.\n\nFirst to 8 hull kills claims the arena. Stay in the turret.",
+	],
+	"plane_race": [
+		"PAPER PLANE RACE  —  Hoop course",
+		preload("res://scripts/rooms/PlaneRaceMode.gd"),
+		"Thread glowing tire hoops before the clock runs out. Premade toys form\nthe obstacles — no invisible air walls on the gates.\n\nW/S throttle, mouse steers, finish the course for bonus coins.",
+	],
+	"hold_dune": [
+		"HOLD THE DUNE  —  King of the hill",
+		preload("res://scripts/rooms/HoldDuneMode.gd"),
+		"Plant your squad on the shovel mound and fill the capture meter.\nChrome waves — and eventually a tank — will contest the hill.\n\nStand on the dune. Contested ground drains progress. Hold until secure.",
 	],
 }
 const MISSION_ORDER := ["bedroom", "living_room", "kitchen", "bathroom", "garage", "backyard", "trenches", "laundry", "porch", "basement"]
@@ -74,6 +89,7 @@ const TIPS := [
 	"TIP: Lost toys glint gold. Five are hidden in every room.",
 	"TIP: Enemies call friends when they spot you. Pick off scouts from range.",
 	"TIP: Paper planes stall at low speed. Keep the throttle [W] pinned in turns.",
+	"TIP: Mini-Games live under GAME MODES — tank duel, hoop race, and Hold the Dune.",
 	"TIP: The Vacuum's armor is impervious. Shoot the green filter pods on its back.",
 	"TIP: Sprint [SHIFT] kicks up dust. Stealthy soldiers walk.",
 	"TIP: Chrome HEAVIES soak damage — feed them a tank shell instead.",
@@ -667,7 +683,7 @@ func _show_briefing(mission_id: String) -> void:
 		await _fade(1.0, 0.4)
 		_deploy_mission(mission_id)
 		await _fade(0.0, 0.6), UiTheme.GREEN)
-	_button(box, "BACK", _show_modes if mission_id in ["skirmish", "royale"] else _show_campaign)
+	_button(box, "BACK", _show_modes if mission_id in ["skirmish", "royale", "tank_battle", "plane_race", "hold_dune"] else _show_campaign)
 
 # ------------------------------------------------------------------ FLOW
 
@@ -739,23 +755,33 @@ func _show_pause_menu() -> void:
 # ---------------------------------------------------------------- GAME MODES
 
 func _show_modes() -> void:
-	var box := _menu_base(0.55)
+	var box := _menu_base(0.62)
 	_title(box, "GAME MODES", 36 if Game.compact_ui() else 46, UiTheme.CYAN)
-	_subtitle(box, "Quick matches in THE SANDBOX arena. Progress and coins carry over.", 14, Color(0.75, 0.78, 0.7))
-	_spacer(box, 14)
+	_subtitle(box, "Sandbox arenas & toy mini-games. Coins and loadout carry over.", 14, Color(0.75, 0.78, 0.7))
+	_spacer(box, 10)
+	_subtitle(box, "VERSUS", 13, Color(0.55, 0.7, 0.85))
 	if Game.compact_ui():
 		_button(box, "SKIRMISH (VS BOTS)", func(): _show_briefing("skirmish"))
 		_button(box, "BATTLE ROYALE (VS BOTS)", func(): _show_briefing("royale"))
-		var online := _button(box, "ONLINE — COMING SOON", func(): pass)
-		online.disabled = true
 	else:
 		_button(box, "SKIRMISH  —  CASUAL (VS BOTS)", func(): _show_briefing("skirmish"))
 		_button(box, "BATTLE ROYALE: RESURGENCE  —  CASUAL (VS BOTS)", func(): _show_briefing("royale"))
-		var online := _button(box, "ONLINE MATCHES  —  COMING SOON", func(): pass)
-		online.disabled = true
+	_spacer(box, 8)
+	_subtitle(box, "MINI-GAMES", 13, Color(0.85, 0.7, 0.45))
+	if Game.compact_ui():
+		_button(box, "TANK BATTLE", func(): _show_briefing("tank_battle"))
+		_button(box, "PAPER PLANE RACE", func(): _show_briefing("plane_race"))
+		_button(box, "HOLD THE DUNE", func(): _show_briefing("hold_dune"))
+	else:
+		_button(box, "TANK BATTLE  —  ARMOR DUEL", func(): _show_briefing("tank_battle"))
+		_button(box, "PAPER PLANE RACE  —  HOOP COURSE", func(): _show_briefing("plane_race"))
+		_button(box, "HOLD THE DUNE  —  KING OF THE HILL", func(): _show_briefing("hold_dune"))
 	_spacer(box, 6)
-	_subtitle(box, "Online play against real players is planned — the modes above are the same rulesets running against bots, so your loadout will be ready.", 12, Color(0.6, 0.65, 0.6))
-	_spacer(box, 12)
+	var online := _button(box, "ONLINE — COMING SOON", func(): pass)
+	online.disabled = true
+	_spacer(box, 6)
+	_subtitle(box, "Premade toy cover you can land on. Race hoops are pass-through — no floating air blockers.", 12, Color(0.6, 0.65, 0.6))
+	_spacer(box, 10)
 	_button(box, "BACK", _show_main_menu)
 
 # ------------------------------------------------------------------ BARRACKS

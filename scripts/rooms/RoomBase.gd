@@ -256,18 +256,24 @@ func _setup_desk_collision(rig: Node3D) -> void:
 	_landmark_box(rig, Vector3(w * 0.42, leg_h * 0.5, 0), Vector3(panel_w, leg_h, d * 0.9))
 
 ## AABB box collider on a ModelLib prop already parented somewhere (table clutter).
-## Thin imported fences/signs get a minimum thickness so the capsule cannot
-## tunnel through a 0.1u plane. Colliders are floor-grounded (y=0 → top) so
-## short/offset meshes still block walking instead of floating as a thin slab.
-func _setup_prop_collision(rig: Node3D, min_thickness: float = 0.95) -> void:
+## Thin imported fences/signs get a minimum XZ thickness so the capsule cannot
+## tunnel through a 0.1u plane. Height matches the mesh so we never grow a
+## floating invisible slab above short props (jetpack / plane blockers).
+func _setup_prop_collision(rig: Node3D, min_thickness: float = 0.85) -> void:
 	if rig == null or not rig.has_meta("aabb"):
 		return
 	var aabb: AABB = rig.get_meta("aabb")
+	var visual_h := maxf(aabb.size.y, 0.05)
+	# Short props: slight pad so you can stand on the top face. Tall: exact H.
+	var size_y: float
+	if visual_h >= 1.0:
+		size_y = visual_h
+	else:
+		size_y = clampf(visual_h + 0.2, 0.45, visual_h + 0.35)
 	var size := Vector3(
 		maxf(aabb.size.x, min_thickness),
-		maxf(aabb.size.y, 1.35),
+		size_y,
 		maxf(aabb.size.z, min_thickness))
-	# Keep XZ centered on the mesh; pin Y so the hull sits on the floor.
 	var center := Vector3(
 		aabb.position.x + aabb.size.x * 0.5,
 		size.y * 0.5,
@@ -284,14 +290,18 @@ func _setup_prop_collision(rig: Node3D, min_thickness: float = 0.95) -> void:
 	body.add_child(cs)
 	rig.add_child(body)
 
-## Walkable climb ramp: thicker than a magazine/towel visual so capsules
-## cannot skim through the thin axis when the board is steeply tilted.
+## Walkable climb ramp: thin enough that rotated boards don't fill empty air
+## (jetpack blockers), thick enough that capsules still land on the top face.
 func _climb_ramp(pos: Vector3, size: Vector3, mat: Material,
 		rot_deg: Vector3 = Vector3.ZERO) -> StaticBody3D:
-	var thick := Vector3(maxf(size.x, 2.4), maxf(size.y, 2.4), maxf(size.z, 2.4))
-	# Keep the long axis; only inflate the thin slab dimension(s).
+	const MIN_FACE := 1.12
+	var thick := size
 	if size.y <= size.x and size.y <= size.z:
-		thick = Vector3(size.x, maxf(size.y, 2.4), size.z)
+		thick = Vector3(size.x, maxf(size.y, MIN_FACE), size.z)
+	elif size.x <= size.y and size.x <= size.z:
+		thick = Vector3(maxf(size.x, MIN_FACE), size.y, size.z)
+	elif size.z <= size.x and size.z <= size.y:
+		thick = Vector3(size.x, size.y, maxf(size.z, MIN_FACE))
 	var body := _static_box(pos, thick, mat)
 	body.rotation_degrees = rot_deg
 	return body

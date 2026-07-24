@@ -71,43 +71,74 @@ func _build_arena() -> void:
 	var s := arena_half
 	var sand := ToyMaterials.carpet(Color(0.6, 0.51, 0.34))
 	var wood := ToyMaterials.plank_floor(Color(0.5, 0.36, 0.22))
-	# Sand floor + wooden sandbox frame (tall enough to be the world border).
+	# Sand floor + wooden sandbox frame. Walls stay low enough that jetpack
+	# can crest the rim; posts mark the corners.
 	_static_box(Vector3(0, -0.5, 0), Vector3(s * 2 + 12, 1.0, s * 2 + 12), sand)
 	for spec in [
-		[Vector3(0, 4, -s - 3), Vector3(s * 2 + 12, 8, 6)],
-		[Vector3(0, 4, s + 3), Vector3(s * 2 + 12, 8, 6)],
-		[Vector3(-s - 3, 4, 0), Vector3(6, 8, s * 2 + 12)],
-		[Vector3(s + 3, 4, 0), Vector3(6, 8, s * 2 + 12)],
+		[Vector3(0, 2.2, -s - 3), Vector3(s * 2 + 12, 4.4, 5)],
+		[Vector3(0, 2.2, s + 3), Vector3(s * 2 + 12, 4.4, 5)],
+		[Vector3(-s - 3, 2.2, 0), Vector3(5, 4.4, s * 2 + 12)],
+		[Vector3(s + 3, 2.2, 0), Vector3(5, 4.4, s * 2 + 12)],
 	]:
 		_static_box(spec[0], spec[1], wood)
+	for corner in [Vector3(-s, 0, -s), Vector3(s, 0, -s), Vector3(-s, 0, s), Vector3(s, 0, s)]:
+		_static_cylinder(corner + Vector3(0, 5, 0), 1.4, 10.0, wood)
 
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20260721
-	# Sandcastle strongholds: one per quadrant, fightable cover clusters.
 	for quad in [Vector3(-0.55, 0, -0.55), Vector3(0.55, 0, -0.55), Vector3(-0.55, 0, 0.55), Vector3(0.55, 0, 0.55)]:
 		_build_sandcastle(Vector3(quad.x * s, 0, quad.z * s), rng)
-	# Center hill: king-of-the-hill dune with a planted shovel.
 	_build_center_dune()
-	# Scattered toy cover between the castles.
+	_dress_arena_props(rng)
 	var cover_mats := [
 		ToyMaterials.plastic(Color(0.85, 0.3, 0.25), 0.3),
 		ToyMaterials.plastic(Color(0.3, 0.5, 0.85), 0.3),
 		ToyMaterials.plastic(Color(0.9, 0.75, 0.25), 0.3),
 	]
-	for i in 14:
-		var pos := Vector3(rng.randf_range(-s * 0.8, s * 0.8), 0, rng.randf_range(-s * 0.8, s * 0.8))
-		if pos.length() < 14.0:
+	for i in 12:
+		var pos := Vector3(rng.randf_range(-s * 0.75, s * 0.75), 0, rng.randf_range(-s * 0.75, s * 0.75))
+		if pos.length() < 16.0:
 			continue
 		match i % 3:
-			0:  # toy block
-				var size := Vector3(rng.randf_range(3, 6), rng.randf_range(2.5, 5), rng.randf_range(3, 6))
+			0:
+				var size := Vector3(rng.randf_range(3, 5.5), rng.randf_range(2.2, 4.2), rng.randf_range(3, 5.5))
 				_static_box(pos + Vector3(0, size.y / 2, 0), size, cover_mats[rng.randi() % 3])
-			1:  # bucket
-				_static_cylinder(pos + Vector3(0, 2.2, 0), rng.randf_range(2.2, 3.2), 4.4, cover_mats[rng.randi() % 3])
-			2:  # half-buried dune mound
-				_static_box(pos + Vector3(0, 0.8, 0), Vector3(rng.randf_range(5, 9), 1.6, rng.randf_range(4, 7)),
+			1:
+				_static_cylinder(pos + Vector3(0, 2.0, 0), rng.randf_range(2.0, 2.8), 4.0, cover_mats[rng.randi() % 3])
+			2:
+				_static_box(pos + Vector3(0, 0.7, 0), Vector3(rng.randf_range(5, 8), 1.4, rng.randf_range(4, 6)),
 					ToyMaterials.carpet(Color(0.55, 0.46, 0.3)), true)
 	add_dust_motes(Vector3(0, 8, 0), Vector3(s, 8, s), 40, Color(0.85, 0.8, 0.6))
+
+## Premade toy clutter — solid props you can land on; no freestyle air slabs.
+func _dress_arena_props(rng: RandomNumberGenerator) -> void:
+	var s := arena_half
+	var spots := [
+		["crate", Vector3(-s * 0.35, 0, s * 0.2), 20.0, 3.2],
+		["crate", Vector3(s * 0.4, 0, -s * 0.25), -35.0, 3.0],
+		["tires", Vector3(s * 0.2, 0, s * 0.45), 40.0, 4.0],
+		["tires", Vector3(-s * 0.5, 0, -s * 0.35), -20.0, 3.6],
+		["barrier_large", Vector3(0, 0, -s * 0.4), 5.0, 5.5],
+		["barrier_single", Vector3(s * 0.55, 0, 0), 90.0, 3.4],
+		["cone", Vector3(-s * 0.15, 0, s * 0.55), 0.0, 1.8],
+		["cone", Vector3(s * 0.15, 0, s * 0.55), 0.0, 1.8],
+		["pallet", Vector3(-s * 0.25, 0, -s * 0.5), 30.0, 3.6],
+		["woodplanks", Vector3(s * 0.3, 0, s * 0.15), 100.0, 4.0],
+		["barrel", Vector3(s * 0.1, 0, -s * 0.55), 15.0, 2.0],
+		["barrel_spilled", Vector3(-s * 0.05, 0, s * 0.5), -25.0, 2.2],
+		["cardboard_1", Vector3(-s * 0.6, 0, s * 0.1), -40.0, 5.0],
+		["sacktrench_small", Vector3(s * 0.05, 0, -s * 0.2), 70.0, 4.8],
+		["debris_pile", Vector3(-s * 0.45, 0, s * 0.35), 110.0, 4.5],
+	]
+	for spec in spots:
+		var pos: Vector3 = spec[1]
+		if absf(pos.x) > s * 0.85 or absf(pos.z) > s * 0.85:
+			continue
+		# Solid prop barrels (landable) — not explosive, so flight lanes stay fair.
+		add_prop(spec[0], pos, spec[2], spec[3])
+	# Climbable plank ramp onto the center dune (visual + solid, not air-fat).
+	_climb_ramp(Vector3(10, 2.2, 8), Vector3(8, 1.05, 16),
+		ToyMaterials.wood(Color(0.55, 0.4, 0.25)), Vector3(-18.0, -35.0, 0))
 
 func _build_sandcastle(center: Vector3, rng: RandomNumberGenerator) -> void:
 	var castle := ToyMaterials.carpet(Color(0.64, 0.54, 0.36))
@@ -168,6 +199,23 @@ func spawn_bot(faction_path: String, pos: Vector3, variant_name: String = "troop
 	add_child(bot)
 	bot.position = pos
 	return bot
+
+func spawn_tank(pos: Vector3, yaw_deg: float = 0.0, ai_team: String = "") -> ToyTank:
+	var tank := ToyTank.new()
+	if ai_team != "":
+		tank.ai_controlled = true
+		tank.ai_team = ai_team
+	add_child(tank)
+	tank.position = pos
+	tank.rotation_degrees.y = yaw_deg
+	return tank
+
+func spawn_plane(pos: Vector3, yaw_deg: float = 0.0) -> PaperPlane:
+	var plane := PaperPlane.new()
+	add_child(plane)
+	plane.position = pos
+	plane.rotation_degrees.y = yaw_deg
+	return plane
 
 ## ---- UI --------------------------------------------------------------------
 func _build_mode_ui() -> void:

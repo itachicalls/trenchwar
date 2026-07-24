@@ -58,6 +58,12 @@ func _setup_mode() -> void:
 		var ang := TAU * i / loot.size() + 0.4
 		var r := arena_half * (0.35 + 0.25 * (i % 2))
 		spawn_weapon_drop(Vector3(cos(ang) * r, 0, sin(ang) * r), loot[i], 40.0)
+	# Mid-loot vehicles — high-risk high-reward pulls.
+	spawn_tank(Vector3(-10, 1, 18), 45.0)
+	spawn_tank(Vector3(16, 1, -12), -120.0)
+	spawn_plane(Vector3(0, 6, 24), 180.0)
+	Pickup.spawn_fuel(self, Vector3(8, 0, 8), 60)
+	Pickup.spawn_fuel(self, Vector3(-14, 0, -10), 60)
 	_update_banner()
 	Events.notify.emit("RESURGENCE: keep one squadmate alive and the fallen return. Outlast every squad!")
 
@@ -119,12 +125,17 @@ func _zone_damage() -> void:
 	var victims: Array[Node] = []
 	victims.append_array(get_tree().get_nodes_in_group("combat_bots"))
 	if Game.player != null and is_instance_valid(Game.player):
-		victims.append(Game.player)
+		# Boarded: sweep damages the hull/plane so camping outside in armor fails.
+		var veh = Game.player.current_vehicle
+		if veh != null and is_instance_valid(veh):
+			victims.append(veh)
+		else:
+			victims.append(Game.player)
 	for v in victims:
 		if v is Node3D and Vector2(v.global_position.x, v.global_position.z).length() > zone_radius:
 			if v.has_method("take_damage") and not (v.has_method("is_dead") and v.is_dead()):
 				v.take_damage(ZONE_DPS)
-				if v == Game.player:
+				if v == Game.player or (Game.player != null and v == Game.player.current_vehicle):
 					Events.notify.emit("You're outside the zone! Get inside the light!")
 
 func _respawns_allowed() -> bool:
@@ -222,4 +233,5 @@ func _update_banner() -> void:
 	else:
 		zone_txt = "NEXT ZONE %ds" % ceili(stage_clock)
 	banner.text = "SQUADS LEFT  %d      %s" % [4 - _count_eliminated(), zone_txt]
-	sub_banner.text = "RESURGENCE ACTIVE — squad respawns online" if _respawns_allowed() else "NO RESPAWNS — final circles"
+	sub_banner.text = ("RESURGENCE ACTIVE — squad respawns online" if _respawns_allowed() else "NO RESPAWNS — final circles") \
+		+ "  •  tanks & plane mid-loot"

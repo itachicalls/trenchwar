@@ -120,16 +120,23 @@ func _check_mount() -> void:
 		and global_position.distance_to(p.global_position) < 4.0
 	_prompt.visible = near
 	if near and Input.is_action_just_pressed("interact"):
-		driver = p
-		p.enter_vehicle(self)
-		_speed = MIN_FLY_SPEED
-		_pitch = -0.15   # gentle initial climb
-		_roll = 0.0
-		_camera.make_current()
+		force_board(p)
+
+## Instantly board (paper-plane race start).
+func force_board(p: Player) -> void:
+	if p == null or not is_instance_valid(p):
+		return
+	driver = p
+	p.enter_vehicle(self)
+	_speed = MIN_FLY_SPEED + 4.0
+	_pitch = -0.12
+	_roll = 0.0
+	_camera.make_current()
+	if _prompt != null:
 		_prompt.visible = false
-		Events.weapon_changed.emit(guns.data.display_name)
-		Events.ammo_changed.emit(guns.ammo, guns.data.magazine_size)
-		Events.notify.emit("Airborne! W/S throttle, mouse steers, E to bail out.")
+	Events.weapon_changed.emit(guns.data.display_name)
+	Events.ammo_changed.emit(guns.ammo, guns.data.magazine_size)
+	Events.notify.emit("Airborne! W/S throttle, mouse steers, E to bail out.")
 
 func _fly(delta: float) -> void:
 	if Input.is_action_just_pressed("interact"):

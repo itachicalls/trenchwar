@@ -19,14 +19,23 @@ var _pitch := -0.35
 var _prompt: Label3D
 var _engine_on := false
 var _aim_point := Vector3.ZERO
+## Bot-driven tanks for Tank Battle (no Player driver).
+var ai_controlled := false
+var ai_team: String = "chrome_legion"
+var _ai_fire_cd := 0.0
+var _ai_think := 0.0
 
 func _ready() -> void:
 	collision_layer = 0b0100
 	collision_mask = 0b0111
 	add_to_group("vehicles")
+	if ai_controlled:
+		add_to_group("enemies")
+		add_to_group("combat_bots")
+		add_to_group("team_" + ai_team)
 
 	health = Health.new()
-	health.setup(400.0)
+	health.setup(400.0 if not ai_controlled else 320.0)
 	health.died.connect(_on_destroyed)
 	add_child(health)
 
@@ -52,7 +61,9 @@ func _ready() -> void:
 	cannon = Weapon.new()
 	cannon.data = load("res://data/weapons/tank_cannon.tres")
 	cannon.owner_unit = self
-	cannon.faction = load("res://data/factions/green_army.tres")
+	var fac_path := "res://data/factions/chrome_legion.tres" if ai_controlled and ai_team == "chrome_legion" \
+		else "res://data/factions/green_army.tres"
+	cannon.faction = load(fac_path)
 	barrel.add_child(cannon)
 	cannon.position.z = -2.2
 
@@ -70,6 +81,8 @@ func _build_visual() -> void:
 	var rig := ModelLib.build_tank(4.6)
 	if rig != null:
 		add_child(rig)
+		if ai_controlled and ai_team == "chrome_legion":
+			ModelLib._tint(rig, Color(0.55, 0.62, 0.78), 0.45, 0.35)
 		if rig.has_meta("turret"):
 			turret = rig.get_meta("turret")
 		else:
@@ -82,7 +95,8 @@ func _build_visual() -> void:
 		barrel.position = Vector3(0, 1.7, 0)
 		add_child(barrel)
 		return
-	var green := ToyMaterials.plastic(Color(0.3, 0.48, 0.22))
+	var hull_col := Color(0.55, 0.62, 0.78) if ai_controlled and ai_team == "chrome_legion" else Color(0.3, 0.48, 0.22)
+	var green := ToyMaterials.plastic(hull_col)
 	var dark := ToyMaterials.plastic(Color(0.18, 0.28, 0.13))
 	var hull := MeshInstance3D.new()
 	var hull_mesh := BoxMesh.new()
@@ -132,6 +146,9 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if not Game.is_playing():
 		return
+	if ai_controlled:
+		_ai_drive(delta)
+		return
 	# Touch look-drag steers the turret while driving.
 	if driver != null and Game.touch_look != Vector2.ZERO:
 		_yaw -= Game.touch_look.x * 0.7
@@ -144,6 +161,84 @@ func _physics_process(delta: float) -> void:
 			move_and_slide()
 		return
 	_drive(delta)
+
+## Instantly board the player (arena tank battle start).
+func force_board(p: Player) -> void:
+	if p == null or not is_instance_valid(p):
+		return
+	driver = p
+	p.enter_vehicle(self)
+	_yaw = rotation.y
+	_pitch = -0.15
+	_camera.make_current()
+	if _prompt != null:
+		_prompt.visible = false
+	Events.weapon_changed.emit(cannon.data.display_name)
+	Events.ammo_changed.emit(cannon.ammo, cannon.data.magazine_size)
+	Events.player_health_changed.emit(health.current, health.max_health)
+
+func _ai_drive(delta: float) -> void:
+	if not is_on_floor():
+		velocity.y -= 24.0 * delta
+	_ai_think -= delta
+	_ai_fire_cd = maxf(_ai_fire_cd - delta, 0.0)
+	var target := _ai_pick_target()
+	var throttle := 0.0
+	var steer := 0.0
+	if target != null:
+		var to := target.global_position - global_position
+		to.y = 0.0
+		var dist := to.length()
+		var want_yaw := atan2(-to.x, -to.z)
+		var yaw_err := wrapf(want_yaw - rotation.y, -PI, PI)
+		steer = clampf(yaw_err * 1.8, -1.0, 1.0)
+		throttle = 0.85 if dist > 14.0 else (-0.35 if dist < 7.0 else 0.25)
+		# Turret tracks target.
+		_yaw = lerp_angle(_yaw, want_yaw, 3.0 * delta)
+		var aim_h := target.global_position + Vector3.UP * 0.8
+		_aim_point = aim_h
+		var to_aim := aim_h - barrel.global_position
+		var flat := Vector2(to_aim.x, to_aim.z).length()
+		barrel.rotation.x = clampf(atan2(to_aim.y, maxf(flat, 0.01)), -0.55, 0.75)
+		turret.rotation.y = _yaw - rotation.y
+		if dist < 28.0 and absf(yaw_err) < 0.45 and _ai_fire_cd <= 0.0:
+			var dir := (aim_h - cannon.muzzle.global_position).normalized()
+			if cannon.try_fire(dir):
+				_ai_fire_cd = 1.35
+				velocity -= dir * 2.0
+	else:
+		# Idle circle when no target.
+		throttle = 0.35
+		steer = 0.4
+	rotation.y += steer * TURN_SPEED * delta * (1.0 if throttle >= 0.0 else -1.0)
+	var forward := -global_transform.basis.z
+	velocity.x = forward.x * throttle * HULL_SPEED * 0.9
+	velocity.z = forward.z * throttle * HULL_SPEED * 0.9
+	move_and_slide()
+
+func _ai_pick_target() -> Node3D:
+	var best: Node3D = null
+	var best_d := 40.0
+	if Game.player != null and is_instance_valid(Game.player):
+		var ppos: Vector3 = Game.player.global_position
+		if Game.player.current_vehicle != null and is_instance_valid(Game.player.current_vehicle):
+			ppos = Game.player.current_vehicle.global_position
+			best = Game.player.current_vehicle
+			best_d = global_position.distance_to(ppos)
+		else:
+			best = Game.player
+			best_d = global_position.distance_to(ppos)
+	for v in get_tree().get_nodes_in_group("vehicles"):
+		if v == self or not is_instance_valid(v):
+			continue
+		if v is ToyTank and (v as ToyTank).ai_controlled and (v as ToyTank).ai_team == ai_team:
+			continue
+		if v is ToyTank and (v as ToyTank).driver != null:
+			var d := global_position.distance_to(v.global_position)
+			if d < best_d:
+				best_d = d
+				best = v
+	return best
 
 func _check_mount() -> void:
 	var p := Game.player
@@ -266,5 +361,7 @@ func _on_destroyed(_attacker: Node) -> void:
 	_stop_engine()
 	if driver != null:
 		_dismount()
+	if ai_controlled:
+		Events.unit_died.emit(self)
 	Fx.explosion(self, global_position + Vector3.UP, 4.0)
 	queue_free()
