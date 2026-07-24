@@ -97,8 +97,8 @@ func _build_machine_tower() -> void:
 			8.0 * i, 6.5)
 	# Foam eruption emitter parked on the lip of the drum.
 	_foam = CPUParticles3D.new()
-	_foam.amount = 60
-	_foam.lifetime = 2.2
+	_foam.amount = 18 if Game.low_gfx() else 60
+	_foam.lifetime = 1.6 if Game.low_gfx() else 2.2
 	_foam.one_shot = false
 	_foam.emitting = false
 	_foam.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
@@ -113,7 +113,8 @@ func _build_machine_tower() -> void:
 	var bubble := SphereMesh.new()
 	bubble.radius = 0.5
 	bubble.height = 1.0
-	bubble.material = ToyMaterials.glow(Color(0.85, 0.95, 1.0), 0.9)
+	bubble.material = ToyMaterials.plastic(Color(0.85, 0.95, 1.0), 0.35) if Game.low_gfx() \
+		else ToyMaterials.glow(Color(0.85, 0.95, 1.0), 0.9)
 	_foam.mesh = bubble
 	_foam.position = _machine_pos + Vector3(0, 30, 6)
 	add_child(_foam)

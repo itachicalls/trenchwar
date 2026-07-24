@@ -107,20 +107,17 @@ var fader: ColorRect = null
 func _ready() -> void:
 	# Menus (incl. pause) must keep processing while the tree is paused.
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	# PERF (web): the browser build runs the Compatibility renderer where 4x
-	# MSAA and 4K shadow atlases are brutal. Halving both is invisible at toy
-	# scale and roughly doubles the frame rate on integrated GPUs.
+	# PERF (web/mobile): Compatibility renderer — MSAA + shadow atlases dominate.
 	if OS.has_feature("web"):
-		get_viewport().msaa_3d = Viewport.MSAA_2X
-		get_viewport().positional_shadow_atlas_size = 2048
-		RenderingServer.directional_shadow_atlas_set_size(2048, true)
-		# Mild internal downscale — keeps the look, frees GPU on browsers.
-		get_viewport().scaling_3d_scale = 0.85
-	if Game.is_touch():
 		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
 		get_viewport().positional_shadow_atlas_size = 1024
 		RenderingServer.directional_shadow_atlas_set_size(1024, true)
-		get_viewport().scaling_3d_scale = 0.75
+		get_viewport().scaling_3d_scale = 0.78
+	if Game.is_touch():
+		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+		get_viewport().positional_shadow_atlas_size = 512
+		RenderingServer.directional_shadow_atlas_set_size(512, true)
+		get_viewport().scaling_3d_scale = 0.68
 		# On-screen controls + landscape gate (touch devices only).
 		add_child(preload("res://scripts/ui/TouchControls.gd").new())
 		add_child(preload("res://scripts/ui/RotatePrompt.gd").new())

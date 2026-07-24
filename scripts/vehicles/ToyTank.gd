@@ -127,7 +127,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		_yaw -= event.relative.x * 0.0028
-		_pitch = clampf(_pitch - event.relative.y * 0.0028, -0.9, 0.15)
+		_pitch = clampf(_pitch - event.relative.y * 0.0028, -0.95, 0.55)
 
 func _physics_process(delta: float) -> void:
 	if not Game.is_playing():
@@ -135,7 +135,7 @@ func _physics_process(delta: float) -> void:
 	# Touch look-drag steers the turret while driving.
 	if driver != null and Game.touch_look != Vector2.ZERO:
 		_yaw -= Game.touch_look.x * 0.7
-		_pitch = clampf(_pitch - Game.touch_look.y * 0.7, -0.9, 0.15)
+		_pitch = clampf(_pitch - Game.touch_look.y * 0.7, -0.95, 0.55)
 		Game.touch_look = Vector2.ZERO
 	if driver == null:
 		_check_mount()
@@ -189,7 +189,7 @@ func _drive(delta: float) -> void:
 	_update_aim_point()
 	var to_aim := _aim_point - barrel.global_position
 	var flat := Vector2(to_aim.x, to_aim.z).length()
-	barrel.rotation.x = clampf(atan2(to_aim.y, maxf(flat, 0.01)), -0.25, 0.6)
+	barrel.rotation.x = clampf(atan2(to_aim.y, maxf(flat, 0.01)), -0.55, 0.75)
 
 	# One looping rumble while throttle is in — the old 5s one-shot spam
 	# kept roaring long after the tank stopped.

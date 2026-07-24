@@ -21,22 +21,24 @@ static func make_night_environment(fog_color: Color, ambient: Color, ambient_ene
 	env.ambient_light_energy = ambient_energy
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.tonemap_exposure = 1.2
-	# Bloom stays on for the toy look; phones keep emissives even if glow is light.
-	env.glow_enabled = true
-	env.glow_intensity = 0.5 if Game.is_touch() else 0.58
-	env.glow_bloom = 0.08 if Game.is_touch() else 0.1
+	# Glow is a Compatibility killer on web/mobile — keep the night look via
+	# lights/emissives instead of full-screen bloom.
+	var low := Game.low_gfx()
+	env.glow_enabled = not low
+	env.glow_intensity = 0.58
+	env.glow_bloom = 0.1
 	# Above ~1.0 so lit porcelain / white plastic does not bloom like a lamp;
 	# true emissives (glow mats, screens) still cross the threshold.
 	env.glow_hdr_threshold = 1.25
 	# SSAO is a Forward+ desktop effect — Compatibility/web gets nothing from it.
-	env.ssao_enabled = not OS.has_feature("web")
+	env.ssao_enabled = not low
 	env.ssao_intensity = 0.7
 	env.ssao_radius = 0.4
 	env.ssao_light_affect = 0.0
 	env.ssao_ao_channel_affect = 0.0
 	env.fog_enabled = true
 	env.fog_light_color = fog_color
-	env.fog_density = 0.0012
+	env.fog_density = 0.0015 if low else 0.0012
 	env.fog_sky_affect = 0.0
 	return env
 
@@ -45,14 +47,13 @@ static func make_night_environment(fog_color: Color, ambient: Color, ambient_ene
 ##   FILL — soft opposite-side bounce, no shadows, lifts the dark side
 ##   RIM  — cool top-back edge light, separates toys from the carpet
 static func add_light_rig(parent: Node, key_rotation_deg: Vector3, key_color: Color, key_energy: float) -> DirectionalLight3D:
-	# Phones: every DirectionalLight3D is a full extra pass over ALL geometry
-	# on the Compatibility renderer, and shadow maps are the single biggest
-	# GPU line item. Two lights, no shadows, key brightened to compensate.
-	var touch := Game.is_touch()
+	# Web + phones: every DirectionalLight3D is a full Compatibility pass, and
+	# shadow maps dominate GPU. One bright key, optional soft fill, no shadows.
+	var low := Game.low_gfx()
 	var key := DirectionalLight3D.new()
 	key.light_color = key_color
-	key.light_energy = key_energy * (1.18 if touch else 1.0)
-	key.shadow_enabled = not touch
+	key.light_energy = key_energy * (1.28 if low else 1.0)
+	key.shadow_enabled = not low
 	key.shadow_opacity = 0.72          # shadows stay readable, never pitch black
 	key.shadow_blur = 1.6
 	key.rotation_degrees = key_rotation_deg
@@ -60,12 +61,12 @@ static func add_light_rig(parent: Node, key_rotation_deg: Vector3, key_color: Co
 
 	var fill := DirectionalLight3D.new()
 	fill.light_color = Color(0.45, 0.5, 0.75)   # blue bounce off the walls
-	fill.light_energy = key_energy * 0.45
+	fill.light_energy = key_energy * (0.55 if low else 0.45)
 	fill.shadow_enabled = false
 	fill.rotation_degrees = Vector3(-32, key_rotation_deg.y + 165.0, 0)
 	parent.add_child(fill)
 
-	if not touch:
+	if not low:
 		var rim := DirectionalLight3D.new()
 		rim.light_color = Color(0.75, 0.85, 1.0)
 		rim.light_energy = key_energy * 0.55
@@ -499,11 +500,12 @@ func add_capture_zone(pos: Vector3, objective_id: String = "capture",
 
 ## Drifting ambient dust motes: cheap, huge atmosphere win in dark rooms.
 func add_dust_motes(center: Vector3, extents: Vector3, amount: int = 40, color: Color = Color(0.9, 0.85, 0.7)) -> void:
+	if Game.low_gfx() and amount > 12:
+		amount = maxi(amount / 4, 8)
 	var motes := CPUParticles3D.new()
-	# Ambience is the first thing to thin out on weak GPUs.
 	motes.amount = amount
-	motes.lifetime = 7.0
-	motes.preprocess = 7.0
+	motes.lifetime = 5.0 if Game.low_gfx() else 7.0
+	motes.preprocess = 2.0 if Game.low_gfx() else 7.0
 	motes.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	motes.emission_box_extents = extents
 	motes.gravity = Vector3.ZERO
@@ -514,7 +516,11 @@ func add_dust_motes(center: Vector3, extents: Vector3, amount: int = 40, color: 
 	motes.scale_amount_max = 0.055
 	var mm := BoxMesh.new()
 	mm.size = Vector3.ONE
-	mm.material = ToyMaterials.glow(color, 0.7)
+	# Unlit plastic on low_gfx — glowing motes force expensive material paths.
+	if Game.low_gfx():
+		mm.material = ToyMaterials.plastic(color, 0.7)
+	else:
+		mm.material = ToyMaterials.glow(color, 0.7)
 	motes.mesh = mm
 	motes.position = center
 	add_child(motes)

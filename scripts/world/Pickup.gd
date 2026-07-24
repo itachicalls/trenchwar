@@ -337,12 +337,13 @@ func _build_presentation(color: Color) -> void:
 		orb.name = "Orb%d" % i
 		add_child(orb)
 
-	# Pulsing light — kept for the loot candy look; slept when far from player.
-	_light = OmniLight3D.new()
-	_light.light_color = color
-	_light.light_energy = 0.9
-	_light.omni_range = 3.5
-	add_child(_light)
+	# Pulsing light — skipped on web/mobile (dozens of Omnis tank Compatibility).
+	if not Game.low_gfx():
+		_light = OmniLight3D.new()
+		_light.light_color = color
+		_light.light_energy = 0.9
+		_light.omni_range = 3.5
+		add_child(_light)
 
 func _process(delta: float) -> void:
 	_t += delta

@@ -63,7 +63,8 @@ static func muzzle_flash(parent: Node3D, color: Color, size: float = 1.0) -> voi
 	s.radial_segments = 8
 	s.rings = 4
 	flash.mesh = s
-	flash.material_override = ToyMaterials.glow(color, 4.0)
+	flash.material_override = ToyMaterials.plastic(color, 0.2) if Game.low_gfx() \
+		else ToyMaterials.glow(color, 4.0)
 	flash.scale = Vector3.ONE * randf_range(0.8, 1.3) * size
 	parent.add_child(flash)
 	var tw := flash.create_tween()

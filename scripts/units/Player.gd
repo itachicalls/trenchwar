@@ -347,14 +347,14 @@ func _update_aim_probe() -> void:
 	var hit := _aim_ray(from, dir, 200.0, excludes)
 	# On a mesa looking down (or under a shelf looking up) the first hit is
 	# often YOUR deck/ceiling a meter in front of the lens. Pierce close
-	# non-hostiles when pitched steeply so lock can reach the fight below/above.
-	if not hit.is_empty() and absf(dir.y) > 0.42 \
-			and from.distance_to(hit.position) < 4.0 and not _is_hostile(hit.collider):
-		var past: Vector3 = hit.position + dir * 0.2
+	# non-hostiles whenever you're pitched enough to be cresting furniture.
+	if not hit.is_empty() and absf(dir.y) > 0.28 \
+			and from.distance_to(hit.position) < 5.5 and not _is_hostile(hit.collider):
+		var past: Vector3 = hit.position + dir * 0.25
 		var pierce := _aim_ray(past, dir, 200.0 - from.distance_to(past), excludes)
 		if not pierce.is_empty():
 			hit = pierce
-		elif absf(dir.y) > 0.55:
+		elif absf(dir.y) > 0.35:
 			# Empty air past the deck — keep aiming along the look axis.
 			hit = {}
 	if hit.is_empty():
@@ -363,14 +363,19 @@ func _update_aim_probe() -> void:
 	else:
 		_aim_point = hit.position
 		aim_at_enemy = _is_hostile(hit.collider)
-	# Aim lock only while ADS or holding fire (incl. aim-gated auto-fire).
-	# Free-look exploring must not magnet onto every Chrome in view.
+		# Hard lock owns assist — sticky old soft-targets must not fight look.
+		if aim_at_enemy and hit.collider is Node3D:
+			_assist_target = hit.collider as Node3D
+	# Soft assist only when the ray is empty / on furniture — never while the
+	# player is looking steeply (that was the "locked facing one spot" bug:
+	# magnet kept yanking pitch back to a Chrome chest on the floor).
 	if _wants_aim_lock():
-		if not aim_at_enemy:
+		if not aim_at_enemy and absf(dir.y) <= 0.38:
 			_apply_aim_assist(from, dir)
-			# Soft lock still counts as "on enemy" for the hot crosshair.
 			if _assist_target != null and is_instance_valid(_assist_target):
 				aim_at_enemy = true
+		elif not aim_at_enemy:
+			_assist_target = null
 	else:
 		_assist_target = null
 
@@ -398,12 +403,21 @@ func _is_hostile(c: Object) -> bool:
 ## Aim assist / lock. Campaign gets a sticky lock with mild camera magnetism;
 ## arenas stay lighter so PvE skirmish still rewards aim.
 var _assist_target: Node3D = null
+var _assist_scan_cd := 0.0
 func _apply_aim_assist(from: Vector3, dir: Vector3) -> void:
+	# Throttle full enemy scans — same stickiness, less web CPU while firing.
+	_assist_scan_cd -= get_physics_process_delta_time()
+	if _assist_scan_cd > 0.0 and _assist_target != null and is_instance_valid(_assist_target):
+		_nudge_aim_to_target(from, dir, _assist_target)
+		return
+	_assist_scan_cd = 0.08 if Game.low_gfx() else 0.04
 	var best: Node3D = null
 	var campaign := Game.in_campaign()
-	var cone_deg := 16.0 if campaign else (10.0 if Game.is_touch() else 7.0)
+	# Narrower cones — wide soft-lock was yanking you onto floor Chrome while
+	# you tried to shoot down a ledge / up a shelf.
+	var cone_deg := 10.0 if campaign else (7.0 if Game.is_touch() else 5.5)
 	if campaign and Game.is_touch():
-		cone_deg = 20.0
+		cone_deg = 12.0
 	var cone := deg_to_rad(cone_deg)
 	var best_angle := cone
 	var candidates: Array[Node] = []
@@ -415,12 +429,16 @@ func _apply_aim_assist(from: Vector3, dir: Vector3) -> void:
 			var chest: Vector3 = (e as Node3D).global_position + Vector3.UP * 0.8
 			var to := chest - from
 			var d := to.length()
-			if d < 2.0 or d > (80.0 if campaign else 65.0):
+			if d < 2.0 or d > (70.0 if campaign else 55.0):
 				continue
-			var angle := dir.angle_to(to / d)
-			# Stickiness: current target wins ties inside a wider cone.
+			var to_n := to / d
+			# Reject targets that sit at a very different pitch than look —
+			# stops floor units stealing aim when you're looking up/down.
+			if absf(to_n.y - dir.y) > 0.42:
+				continue
+			var angle := dir.angle_to(to_n)
 			if e == _assist_target:
-				angle *= 0.35 if campaign else 0.55
+				angle *= 0.45 if campaign else 0.6
 			if angle < best_angle:
 				best_angle = angle
 				best = e
@@ -428,31 +446,43 @@ func _apply_aim_assist(from: Vector3, dir: Vector3) -> void:
 		_assist_target = null
 		return
 	var chest: Vector3 = best.global_position + Vector3.UP * 0.8
-	# World geometry blocks assist — but the ledge you're standing on often
-	# clips the camera→chest ray when firing down. Ignore close blockers
-	# under a steep look so vertical lock still sticks.
 	var los := PhysicsRayQueryParameters3D.create(from, chest)
 	los.collision_mask = 0b0001
 	var block := get_world_3d().direct_space_state.intersect_ray(los)
 	var blocked := not block.is_empty()
-	if blocked and absf(dir.y) > 0.4 and from.distance_to(block.position) < 4.0:
+	if blocked and absf(dir.y) > 0.35 and from.distance_to(block.position) < 5.0:
 		blocked = false
-	if not blocked:
-		_assist_target = best
-		var strength: float = lerpf(
-			0.97 if campaign else 0.9,
-			0.72 if campaign else 0.45,
-			clampf(best_angle / cone, 0.0, 1.0))
-		if best is CharacterBody3D:
-			var travel: float = chest.distance_to(from) / maxf(weapon.data.projectile_speed, 1.0)
-			chest += (best as CharacterBody3D).velocity * travel * (0.85 if campaign else 0.6)
-		_aim_point = _aim_point.lerp(chest, strength)
-	else:
+	if blocked:
 		_assist_target = null
+		return
+	_assist_target = best
+	_nudge_aim_to_target(from, dir, best, best_angle, cone)
 
-## Campaign soft lock: gently magnetize the camera toward the locked chest so
-## tracking a sprinting Chrome feels sticky without full aimbot.
-## Only while aiming / firing — never during free look.
+func _nudge_aim_to_target(from: Vector3, dir: Vector3, best: Node3D,
+		best_angle: float = -1.0, cone: float = 0.2) -> void:
+	var chest: Vector3 = best.global_position + Vector3.UP * 0.8
+	var to := chest - from
+	var d := to.length()
+	if d < 0.5:
+		return
+	var to_n := to / d
+	if absf(to_n.y - dir.y) > 0.5:
+		_assist_target = null
+		return
+	var campaign := Game.in_campaign()
+	if best_angle < 0.0:
+		best_angle = dir.angle_to(to_n)
+	var strength: float = lerpf(
+		0.78 if campaign else 0.55,
+		0.4 if campaign else 0.28,
+		clampf(best_angle / maxf(cone, 0.001), 0.0, 1.0))
+	if best is CharacterBody3D:
+		var travel: float = d / maxf(weapon.data.projectile_speed, 1.0)
+		chest += (best as CharacterBody3D).velocity * travel * (0.7 if campaign else 0.5)
+	_aim_point = _aim_point.lerp(chest, strength)
+
+## Campaign soft lock: yaw-only magnet toward the locked target.
+## Pitch stays fully player-owned — magnetizing pitch was the up/down lock.
 func _apply_lock_magnet(delta: float) -> void:
 	if not _wants_aim_lock():
 		return
@@ -460,26 +490,26 @@ func _apply_lock_magnet(delta: float) -> void:
 		return
 	if _camera == null:
 		return
+	var cam_fwd := -_camera.global_transform.basis.z
+	# Looking steeply: no magnet at all — free vertical + horizontal aim.
+	if absf(cam_fwd.y) > 0.38:
+		return
 	var chest: Vector3 = _assist_target.global_position + Vector3.UP * 0.85
 	var to: Vector3 = chest - _camera.global_position
 	if to.length_squared() < 0.01:
 		return
 	var want := to.normalized()
-	var want_pitch := asin(clampf(want.y, -0.95, 0.95))
-	var pull := 3.2 * delta if Game.is_touch() else 2.4 * delta
-	var flat := Vector3(want.x, 0.0, want.z)
-	# Directly above/below: still pitch the camera — old code bailed and left
-	# you stuck staring horizontally off the ledge.
-	if flat.length_squared() < 0.0001:
-		_pitch = clampf(lerpf(_pitch, -want_pitch, pull), -1.35, 1.05)
+	# Bail if the lock sits at a different pitch than we're looking.
+	if absf(want.y - cam_fwd.y) > 0.4:
 		return
+	var flat := Vector3(want.x, 0.0, want.z)
+	if flat.length_squared() < 0.0001:
+		return
+	var pull := 2.0 * delta if Game.is_touch() else 1.6 * delta
 	var want_yaw := atan2(-flat.x, -flat.z)
-	# Only pull yaw when already roughly on target — wild flicks stay free.
-	# Pitch still eases in so vertical track isn't gated by yaw error.
 	var yaw_err := absf(wrapf(want_yaw - _yaw, -PI, PI))
-	if yaw_err <= deg_to_rad(28.0):
+	if yaw_err <= deg_to_rad(22.0):
 		_yaw = lerp_angle(_yaw, want_yaw, pull)
-	_pitch = clampf(lerpf(_pitch, -want_pitch, pull * 1.15), -1.35, 1.05)
 
 func _update_camera(delta: float) -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
@@ -559,6 +589,13 @@ func _update_movement(delta: float) -> void:
 		face_direction(-cam_basis.z, delta, 30.0)
 	elif moving:
 		face_direction(wish, delta)
+	# Lean the toy torso with look pitch so firing up/down reads on the body
+	# (yaw-only facing made steep shots feel "locked horizontal").
+	if body_rig != null:
+		var want_lean := 0.0
+		if _aiming or _face_cam_timer > 0.0 or not is_on_floor():
+			want_lean = clampf(_pitch * 0.55, -0.55, 0.4)
+		body_rig.rotation.x = lerpf(body_rig.rotation.x, want_lean, 12.0 * delta)
 
 func _update_combat() -> void:
 	# Web desktop: while the pointer isn't locked yet, the camera can't turn —
@@ -587,22 +624,20 @@ func _update_combat() -> void:
 	if Input.is_action_just_pressed("reload"):
 		weapon.reload()
 
-## Fire toward whatever the crosshair probe hit this tick.
+## Fire along the camera. Mild pitch already trusts the lens; steeper look
+## always does. Floor/furniture aim points must not flatten ledge shots.
 func _aim_direction() -> Vector3:
 	var cam_fwd := -_camera.global_transform.basis.z
-	# Gun is body-mounted (yaw only). Steep look-downs/ups make muzzle→hit
-	# read as "behind the barrel" and the old fallback locked you to a flat
-	# forward shot off the ledge. Trust the camera whenever pitch is steep.
-	if absf(cam_fwd.y) > 0.5:
+	if absf(cam_fwd.y) > 0.28 or _aiming:
 		return cam_fwd
 	var dir := _aim_point - weapon.muzzle.global_position
 	if dir.length_squared() < 0.0001:
 		return cam_fwd
 	dir = dir.normalized()
-	# Hugging a wall can put the aim point BEHIND the muzzle — fall back.
-	if dir.dot(cam_fwd) < 0.05:
+	# Blend toward camera so assist nudge helps horizontally without killing pitch.
+	if dir.dot(cam_fwd) < 0.15:
 		return cam_fwd
-	return dir
+	return dir.lerp(cam_fwd, 0.35).normalized()
 
 func _update_interactions() -> void:
 	if Input.is_action_just_pressed("swap_weapon"):
