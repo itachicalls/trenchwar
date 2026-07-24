@@ -109,9 +109,12 @@ func _unit_ready() -> void:
 	# friendly soldiers.
 	collision_mask = 0b1111
 	_nav = NavigationAgent3D.new()
-	_nav.path_desired_distance = 0.6
-	_nav.target_desired_distance = 0.8
-	_nav.radius = 0.4
+	_nav.path_desired_distance = 0.55
+	_nav.target_desired_distance = 0.9
+	_nav.radius = 0.45
+	# Avoidance RVO needs velocity_computed wiring — keep off; wall probes +
+	# _unstick handle prop grinding without freezing agents.
+	_nav.avoidance_enabled = false
 	add_child(_nav)
 	if patrol_points.is_empty():
 		patrol_points = [global_position]
@@ -173,10 +176,10 @@ func _physics_process(delta: float) -> void:
 	if Game.player != null and is_instance_valid(Game.player):
 		dist_sq = global_position.distance_squared_to(Game.player.global_position)
 		near_player = dist_sq < 1600.0
-	# Deep sleep: far patrols (and distant alerts) skip almost everything on web/mobile.
-	var sleep_sq := 3600.0 if Game.low_gfx() else 2200.0
-	var deep_sleep := Game.low_gfx() and dist_sq > sleep_sq \
-		and (state == AiState.PATROL or state == AiState.ALERT)
+	# Deep sleep only while truly idle on patrol — ALERT/COMBAT bots must keep
+	# pathing or they freeze at the arena rim then slam into props when woken.
+	var sleep_sq := 4200.0 if Game.low_gfx() else 2800.0
+	var deep_sleep := Game.low_gfx() and state == AiState.PATROL and dist_sq > sleep_sq
 	if deep_sleep:
 		_think_timer -= delta
 		if _think_timer <= 0.0:
@@ -210,30 +213,46 @@ func _physics_process(delta: float) -> void:
 		animate_waddle(delta, Vector2(velocity.x, velocity.z).length() > 0.5)
 
 ## Wanting to move but going nowhere = wedged against something. First try a
-## HOP (soldiers vault low clutter like real toys), then snap to the navmesh
-## as a last resort.
+## HOP (soldiers vault low clutter like real toys), then lateral slide / nav snap.
 func _detect_stuck(delta: float) -> void:
-	var wants_move := Vector2(velocity.x, velocity.z).length() > 1.0
+	var wants_move := Vector2(velocity.x, velocity.z).length() > 0.8
 	var progress := global_position.distance_to(_last_pos)
 	_last_pos = global_position
-	if wants_move and progress < 0.02:
+	if wants_move and progress < 0.035:
 		_stuck_time += delta
 	else:
-		_stuck_time = 0.0
+		_stuck_time = maxf(_stuck_time - delta * 1.5, 0.0)
 		return
 	# Early response: obstacle is knee-high and clear above? Vault it.
-	if _stuck_time > 0.4 and try_vault():
+	if _stuck_time > 0.35 and try_vault():
 		_stuck_time = 0.0
 		return
-	if _stuck_time > 1.8:
-		_stuck_time = 0.0
-		var map := get_world_3d().navigation_map
-		var jitter := Vector3(randf_range(-3, 3), 0, randf_range(-3, 3))
-		var free_point := NavigationServer3D.map_get_closest_point(map, global_position + jitter)
-		global_position = free_point + Vector3.UP * 0.2
-		Fx.dust(self, global_position)
-		if state == AiState.COMBAT:
-			state = AiState.ALERT   # re-path via the navmesh instead of beelining
+	# Sidestep off the face they're grinding into.
+	if _stuck_time > 0.9:
+		var side := global_transform.basis.x * (1.0 if randf() > 0.5 else -1.0)
+		velocity.x = side.x * move_speed * 1.1
+		velocity.z = side.z * move_speed * 1.1
+		velocity.y = 6.0
+	if _stuck_time > 1.35:
+		_unstick()
+
+func _unstick() -> void:
+	_stuck_time = 0.0
+	var map := get_world_3d().navigation_map
+	var side := global_transform.basis.x * (2.2 if randf() > 0.5 else -2.2)
+	var jitter := side + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
+	var free_point := NavigationServer3D.map_get_closest_point(map, global_position + jitter)
+	global_position = free_point + Vector3.UP * 0.25
+	Fx.dust(self, global_position)
+	# Skip a dead patrol waypoint / repath to target so they don't re-kiss the prop.
+	if not patrol_points.is_empty():
+		_patrol_index = (_patrol_index + 1) % patrol_points.size()
+	if target != null and is_instance_valid(target) and _nav != null:
+		_nav.target_position = target.global_position
+		state = AiState.ALERT
+	elif _nav != null and not patrol_points.is_empty():
+		_nav.target_position = patrol_points[_patrol_index]
+		state = AiState.PATROL
 
 ## ---- decision layer (runs at 4 Hz) ----
 func _think() -> void:
@@ -381,15 +400,37 @@ func _fire_control(delta: float, dist: float) -> void:
 
 func _move_along_path(delta: float, speed: float) -> void:
 	if _nav.is_navigation_finished():
-		velocity.x = move_toward(velocity.x, 0.0, 30.0 * delta)
-		velocity.z = move_toward(velocity.z, 0.0, 30.0 * delta)
-		return
+		# Goal claimed "done" but target still far — force a fresh path query.
+		if target != null and is_instance_valid(target) \
+				and global_position.distance_to(target.global_position) > 2.5:
+			_nav.target_position = target.global_position
+		else:
+			velocity.x = move_toward(velocity.x, 0.0, 30.0 * delta)
+			velocity.z = move_toward(velocity.z, 0.0, 30.0 * delta)
+			return
 	var next := _nav.get_next_path_position()
 	var dir := next - global_position
 	dir.y = 0.0
 	if dir.length() < 0.05:
 		return
 	dir = dir.normalized()
+	# Don't plow chest-first into world geometry — slide along it.
+	var probe := PhysicsRayQueryParameters3D.create(
+		global_position + Vector3.UP * 0.7,
+		global_position + Vector3.UP * 0.7 + dir * 1.1)
+	probe.collision_mask = 0b0001
+	probe.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(probe)
+	if not hit.is_empty():
+		var n: Vector3 = hit.normal
+		n.y = 0.0
+		if n.length_squared() > 0.01:
+			n = n.normalized()
+			dir = (dir - n * dir.dot(n)).normalized()
+			if dir.length_squared() < 0.05:
+				# Dead-end: vault or unstick next tick.
+				_stuck_time = maxf(_stuck_time, 0.5)
+				return
 	velocity.x = dir.x * speed
 	velocity.z = dir.z * speed
 	face_direction(dir, delta)

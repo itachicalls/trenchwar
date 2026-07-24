@@ -41,10 +41,25 @@ func _acquire_target() -> Node3D:
 			best = c
 	if not is_player_team and Game.player != null and is_instance_valid(Game.player) \
 			and not Game.player.is_dead():
-		var pd := global_position.distance_to(Game.player.global_position)
+		# Boarded player: hunt the hull/plane, not the invisible passenger.
+		var hunt: Node3D = Game.player
+		if Game.player.current_vehicle != null and is_instance_valid(Game.player.current_vehicle):
+			hunt = Game.player.current_vehicle
+		var pd := global_position.distance_to(hunt.global_position)
 		if pd < best_dist:
-			best = Game.player
+			best = hunt
 	return best
+
+## Hold-the-Dune / assault spawn: path to the mound instead of idle-patrolling.
+func _begin_dune_rush() -> void:
+	state = AiState.ALERT
+	if Game.player != null and is_instance_valid(Game.player) and not Game.player.is_dead():
+		if Game.player.current_vehicle != null and is_instance_valid(Game.player.current_vehicle):
+			target = Game.player.current_vehicle
+		else:
+			target = Game.player
+	if _nav != null:
+		_nav.target_position = Vector3(0, 1, 0) if target == null else target.global_position
 
 ## Alert teammates, not the campaign "enemies" group.
 func _enter_combat() -> void:

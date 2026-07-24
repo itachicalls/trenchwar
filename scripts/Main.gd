@@ -75,9 +75,9 @@ const MISSIONS := {
 		"Bright backyard sky course — thread numbered tire hoops in order.\n\nW throttle, A/D turn, mouse pitches. Stay airborne and beat the clock.",
 	],
 	"hold_dune": [
-		"HOLD THE DUNE  —  King of the hill",
+		"HOLD THE DUNE  —  Wave survival",
 		preload("res://scripts/rooms/HoldDuneMode.gd"),
-		"Plant your squad on the shovel mound and fill the capture meter.\nChrome waves — and eventually a tank — will contest the hill.\n\nStand on the dune. Contested ground drains progress. Hold until secure.",
+		"Chrome rushes the shovel mound in relentless waves — heavies, insects,\nand armor. Contested ground drains hard.\n\nStand on the dune and fill the meter. Survive the onslaught.",
 	],
 }
 const MISSION_ORDER := ["bedroom", "living_room", "kitchen", "bathroom", "garage", "backyard", "trenches", "laundry", "porch", "basement"]

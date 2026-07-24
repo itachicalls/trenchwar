@@ -1,49 +1,54 @@
 class_name HoldDuneMode
 extends ArenaBase
-## HOLD THE DUNE — king-of-the-hill on the sandbox shovel mound.
-## Premade sandbags and barriers ring the objective; fill the meter while
-## standing on the dune. Chrome waves contest the hill.
+## HOLD THE DUNE — king-of-the-hill survival. Chrome rushes the shovel mound
+## in relentless waves. Fill the meter while standing on the dune; contested
+## ground drains hard. Survive the onslaught.
 
-const HOLD_TARGET := 28.0
-const MATCH_TIME := 120.0
+const HOLD_TARGET := 48.0
+const MATCH_TIME := 150.0
 const GREEN := "res://data/factions/green_army.tres"
 const CHROME := "res://data/factions/chrome_legion.tres"
+const DUNE := Vector3(0, 1, 0)
 
 var _hold := 0.0
 var _time_left := MATCH_TIME
 var _wave := 0
-var _wave_cd := 8.0
+var _wave_cd := 3.0
 var _player_respawn := -1.0
 var _label: Label3D
 var _chrome_cache := false
 var _chrome_scan_cd := 0.0
 var _banner_cd := 0.0
-var _spawned_chrome_tank := false
+var _tanks_spawned := 0
 
 func _init() -> void:
 	arena_half = 52.0
 
 func _max_chrome() -> int:
-	return 8 if Game.low_gfx() else 12
+	return 11 if Game.low_gfx() else 16
 
 func _setup_mode() -> void:
 	Missions.start_mission("HOLD THE DUNE")
 	spawn_player(Vector3(-arena_half + 12, 1, 0))
+	# Greens dig in on the mound flanks.
 	var mates := 2 if Game.low_gfx() else 3
 	for i in mates:
-		spawn_bot(GREEN, Vector3(-arena_half + 14, 1, (i - 1) * 6.0), ["trooper", "scout", "commando"][i])
+		var mate := spawn_bot(GREEN, Vector3(-6 + i * 4.0, 1, 8), ["commando", "heavy", "trooper"][i])
+		mate.patrol_points = [Vector3(-4 + i * 3.0, 1, 2), Vector3(4, 1, -2), DUNE]
 	_ring_dune()
 	_build_hold_marker()
 	spawn_weapon_drop(Vector3(14, 0, -10), "scatter")
 	spawn_weapon_drop(Vector3(-14, 0, 10), "repeater")
+	spawn_weapon_drop(Vector3(0, 4.2, 0), "marble", 55.0)
 	if not Game.low_gfx():
 		spawn_tank(Vector3(-22, 1, -16), 30.0)
 	_update_banner()
-	sub_banner.text = "STAND ON THE DUNE  •  FILL THE METER"
-	Events.notify.emit("HOLD THE DUNE: plant boots on the shovel mound. Chrome will try to push you off!")
+	sub_banner.text = "HOLD THE MOUND  •  WAVE AFTER WAVE"
+	Events.notify.emit("HOLD THE DUNE: Chrome is coming in waves. Plant boots on the shovel mound and don't give it back!")
+	# Opening wave immediately so the match never idles.
+	_spawn_wave()
 
 func _ring_dune() -> void:
-	# Premade sandbag / barrier ring — solid cover you can land on.
 	add_prop("sacktrench", Vector3(0, 0, -14), 0.0, 8.0)
 	add_prop("sacktrench_small", Vector3(12, 0, 8), -50.0, 5.0)
 	add_prop("sacktrench_small", Vector3(-12, 0, 8), 50.0, 5.0)
@@ -73,34 +78,35 @@ func _process(delta: float) -> void:
 	_wave_cd -= delta
 	if _wave_cd <= 0.0:
 		_spawn_wave()
-		_wave_cd = maxf(14.0 - _wave * 1.2, 8.0 if Game.low_gfx() else 7.0)
+		# Relentless cadence — shortens as pressure mounts.
+		_wave_cd = maxf(9.0 - _wave * 0.45, 4.2 if Game.low_gfx() else 3.6)
 	_chrome_scan_cd -= delta
 	if _chrome_scan_cd <= 0.0:
-		_chrome_scan_cd = 0.28 if Game.low_gfx() else 0.18
+		_chrome_scan_cd = 0.25 if Game.low_gfx() else 0.15
 		_chrome_cache = _chrome_on_hill()
 	var on_hill := _player_on_hill()
 	var contested := _chrome_cache
 	if on_hill and not contested:
-		_hold = minf(_hold + delta, HOLD_TARGET)
+		_hold = minf(_hold + delta * 0.85, HOLD_TARGET)
 		_label.text = "HOLDING  %d%%" % int((_hold / HOLD_TARGET) * 100)
 		_label.modulate = Color(0.4, 1.0, 0.55)
 	elif on_hill and contested:
-		_hold = maxf(_hold - delta * 0.35, 0.0)
-		_label.text = "CONTESTED"
-		_label.modulate = Color(1.0, 0.55, 0.3)
+		_hold = maxf(_hold - delta * 0.95, 0.0)
+		_label.text = "CONTESTED — CLEAR THE HILL"
+		_label.modulate = Color(1.0, 0.45, 0.25)
 	else:
-		_hold = maxf(_hold - delta * 0.55, 0.0)
-		_label.text = "HOLD THE DUNE"
+		_hold = maxf(_hold - delta * 1.1, 0.0)
+		_label.text = "GET ON THE DUNE"
 		_label.modulate = Color(1.0, 0.8, 0.35)
 	_banner_cd -= delta
 	if _banner_cd <= 0.0:
 		_banner_cd = 0.2
 		_update_banner()
 	if _hold >= HOLD_TARGET:
-		win_match("DUNE SECURED — Chrome pushed back")
+		win_match("DUNE SECURED — %d waves held" % _wave)
 		return
 	if _time_left <= 0.0:
-		lose_match("Time's up — the dune slipped away.")
+		lose_match("Time's up — Chrome took the dune.")
 		return
 	if _player_respawn > 0.0:
 		_player_respawn -= delta
@@ -113,7 +119,6 @@ func _player_on_hill() -> bool:
 	var p := Game.player
 	if p == null or not is_instance_valid(p):
 		return false
-	# Foot / tank on the mound only — airborne plane camping does not count.
 	if p.current_vehicle is PaperPlane:
 		return false
 	var pos: Vector3 = p.global_position
@@ -130,8 +135,7 @@ func _chrome_on_hill() -> bool:
 			continue
 		var pos: Vector3 = n.global_position
 		var flat := Vector2(pos.x, pos.z).length()
-		# On the mound top / mid-slope — not the sand at the foot.
-		if flat < 11.0 and pos.y >= 1.2 and pos.y < 9.0:
+		if flat < 11.5 and pos.y >= 1.0 and pos.y < 9.0:
 			return true
 	return false
 
@@ -146,35 +150,58 @@ func _spawn_wave() -> void:
 	_wave += 1
 	var room := _max_chrome() - _chrome_alive()
 	if room <= 0:
-		_wave_cd = 5.0
+		# Cap hit — still tick the clock so later culls open slots.
+		_wave_cd = mini(_wave_cd, 3.5)
 		return
-	var variants := ["trooper", "scout", "commando", "heavy", "grenadier"]
-	var count := mini(mini(2 + _wave / 2, 5), room)
+	var variants := ["trooper", "scout", "commando", "heavy", "grenadier", "chrome_beetle"]
+	# Escalating pack size: 3 → 7 (desktop), slightly leaner on web.
+	var pack := mini(3 + _wave / 2 + (_wave / 4), 7 if not Game.low_gfx() else 5)
+	var count := mini(pack, room)
+	Events.notify.emit("CHROME WAVE %d — %d inbound!" % [_wave, count])
+	Sfx.play("shoot_heavy", -5.0, 0.4)
 	for i in count:
-		var ang := randf() * TAU
-		var r := arena_half * 0.72
+		var ang := (TAU * float(i) / float(count)) + _wave * 0.35 + randf_range(-0.15, 0.15)
+		var r := arena_half * (0.78 if i % 2 == 0 else 0.68)
 		var pos := Vector3(cos(ang) * r, 1, sin(ang) * r)
-		spawn_bot(CHROME, pos, variants[i % variants.size()])
-	if _wave == 3 and not _spawned_chrome_tank:
-		_spawned_chrome_tank = true
-		spawn_tank(Vector3(arena_half - 16, 1, 0), 180.0, "chrome_legion")
-		Events.notify.emit("Chrome armor rolling on the dune!")
-	elif _wave % 2 == 0:
-		Events.notify.emit("Chrome wave %d inbound!" % _wave)
+		var vname: String = variants[(i + _wave) % variants.size()]
+		if _wave >= 4 and i == 0:
+			vname = "heavy"
+		if _wave >= 7 and i == 1:
+			vname = "juggernaut" if not Game.low_gfx() else "heavy"
+		_spawn_rusher(pos, vname)
+	# Armor every few waves — keep pressure after the first tank dies.
+	if _wave == 3 or (_wave > 3 and _wave % 4 == 0):
+		if _tanks_spawned < (2 if Game.low_gfx() else 3):
+			_tanks_spawned += 1
+			var tang := randf() * TAU
+			var tpos := Vector3(cos(tang) * arena_half * 0.75, 1, sin(tang) * arena_half * 0.75)
+			spawn_tank(tpos, rad_to_deg(-tang) + 180.0, "chrome_legion")
+			Events.notify.emit("Chrome armor on the dune!")
+
+## Chrome that paths straight at the mound (not random mid-field wander).
+func _spawn_rusher(pos: Vector3, variant_name: String) -> CombatBot:
+	var bot := spawn_bot(CHROME, pos, variant_name)
+	# Approach lanes → mound crest. Avoids aimless circles into sandbox clutter.
+	var approach := pos.normalized() * 8.0
+	approach.y = 1.0
+	bot.patrol_points = [approach, DUNE + Vector3(randf_range(-3, 3), 0, randf_range(-3, 3)), DUNE]
+	bot.vision_range = 36.0
+	bot.attack_range = 18.0
+	bot.call_deferred("_begin_dune_rush")
+	return bot
 
 func _on_arena_unit_died(unit: Node) -> void:
-	if unit is ToyTank and (unit as ToyTank).ai_controlled:
-		pass  # Game.kills via enemies group
-	elif unit is CombatBot and unit.faction != null and unit.faction.id != "green_army":
-		Game.kills += 1  # CombatBots are not in enemies
+	if unit is CombatBot and unit.faction != null and unit.faction.id != "green_army":
+		Game.kills += 1
 
 func _on_player_died() -> void:
 	if _match_over:
 		return
-	_player_respawn = 4.0
-	_hold = maxf(_hold - 4.0, 0.0)
+	_player_respawn = 3.5
+	_hold = maxf(_hold - 6.0, 0.0)
 
 func _update_banner() -> void:
 	if _player_respawn > 0.0:
 		return
-	banner.text = "DUNE  %d%%      TIME  %ds" % [int((_hold / HOLD_TARGET) * 100), maxi(0, ceili(_time_left))]
+	banner.text = "DUNE  %d%%   WAVE  %d   TIME  %ds" % [
+		int((_hold / HOLD_TARGET) * 100), _wave, maxi(0, ceili(_time_left))]
