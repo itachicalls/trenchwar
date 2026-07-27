@@ -78,7 +78,7 @@ func solana_cluster() -> String:
 	return _config_cluster
 
 func _load_net_config() -> void:
-	# Prefer static file packed / next to index.html (Vercel).
+	# Prefer static file next to index.html (Vercel) so tunnel URL updates without re-export.
 	if OS.has_feature("web"):
 		var h := HTTPRequest.new()
 		add_child(h)
@@ -87,7 +87,11 @@ func _load_net_config() -> void:
 			if result == HTTPRequest.RESULT_SUCCESS and code == 200:
 				_apply_net_config(body.get_string_from_utf8())
 		, CONNECT_ONE_SHOT)
-		h.request("net_config.json")
+		var origin := str(JavaScriptBridge.eval("window.location.origin", true))
+		var url := "net_config.json"
+		if origin.begins_with("http"):
+			url = "%s/net_config.json" % origin
+		h.request(url)
 		return
 	if FileAccess.file_exists("res://web/net_config.json"):
 		var f := FileAccess.open("res://web/net_config.json", FileAccess.READ)
@@ -95,6 +99,10 @@ func _load_net_config() -> void:
 			_apply_net_config(f.get_as_text())
 
 func _apply_net_config(text: String) -> void:
+	# Strip UTF-8 BOM if present (PowerShell Set-Content often adds it).
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	text = text.strip_edges()
 	var data = JSON.parse_string(text)
 	if typeof(data) != TYPE_DICTIONARY:
 		return

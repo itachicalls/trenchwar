@@ -68,6 +68,11 @@ function recreateKeypair(secretB58) {
 const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "64kb" }));
+// Allow browser clients on Vercel (or elsewhere) to call this API cross-origin.
+app.use((_req, res, next) => {
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+});
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, cluster: clusterLabel(), godot: GODOT_WS });

@@ -102,13 +102,16 @@ if (-not $publicHttps) {
 }
 
 $wss = $publicHttps -replace "^https://", "wss://"
-$config = @{
+$configObj = [ordered]@{
   wss            = $wss
   wager_api      = $publicHttps
   solana_cluster = $env:SOLANA_CLUSTER
   updated        = (Get-Date).ToUniversalTime().ToString("o")
-} | ConvertTo-Json
-Set-Content -Path (Join-Path $root "web\net_config.json") -Value $config -Encoding UTF8
+}
+$config = ($configObj | ConvertTo-Json -Compress)
+# UTF-8 without BOM — Godot JSON.parse_string rejects EF BB BF
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText((Join-Path $root "web\net_config.json"), $config, $utf8NoBom)
 
 Write-Host ""
 Write-Host "=============================================="
