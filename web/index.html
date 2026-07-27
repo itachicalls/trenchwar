@@ -75,6 +75,31 @@ body {
 	text-align: center;
 	z-index: 1;
 }
+		#tw-boot-ad {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 14%;
+	z-index: 2;
+	text-align: center;
+	pointer-events: none;
+	font-family: Georgia, 'Times New Roman', serif;
+	text-shadow: 0 2px 10px rgba(0,0,0,0.85);
+}
+#tw-boot-ad .tw-line {
+	color: #f2c85a;
+	font-size: clamp(14px, 2.6vw, 22px);
+	letter-spacing: 0.12em;
+	font-weight: 700;
+	margin: 0 1rem 0.35rem;
+}
+#tw-boot-ad .tw-sub {
+	color: #d8e0c8;
+	font-size: clamp(12px, 2vw, 16px);
+	letter-spacing: 0.04em;
+	margin: 0 1.25rem;
+	font-family: 'Segoe UI', Tahoma, sans-serif;
+}
 		</style>
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
@@ -94,11 +119,15 @@ body {
 			<img id="status-splash" src="index.png" alt="">
 			<progress id="status-progress"></progress>
 			<div id="status-notice"></div>
+			<div id="tw-boot-ad">
+				<div class="tw-line">ONLINE PVP  |  WAGER SOL</div>
+				<div class="tw-sub">Stake on Solana - winner takes the pot</div>
+			</div>
 		</div>
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":15108384,"index.wasm":35376909},"focusCanvas":true,"gdextensionLibs":[]};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":15108560,"index.wasm":35376909},"focusCanvas":true,"gdextensionLibs":[]};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
