@@ -20,6 +20,7 @@ var _chrome_cache := false
 var _chrome_scan_cd := 0.0
 var _banner_cd := 0.0
 var _tanks_spawned := 0
+var _hold_sync_cd := 0.0
 
 func _init() -> void:
 	arena_half = 52.0
@@ -30,6 +31,7 @@ func _max_chrome() -> int:
 func _setup_mode() -> void:
 	Missions.start_mission("HOLD THE DUNE")
 	if Net.is_online:
+		Net.hold_synced.connect(_on_hold_synced)
 		spawn_online_humans({
 			"green_army": Vector3(-arena_half + 12, 1, 0),
 			"chrome_legion": Vector3(arena_half - 12, 1, 0),
@@ -80,17 +82,29 @@ func _process(delta: float) -> void:
 	super(delta)
 	if _match_over or not Game.is_playing():
 		return
+	# Local respawn runs on every peer (client-owned player).
+	if _player_respawn > 0.0:
+		_player_respawn -= delta
+		banner.text = "REDEPLOYING IN %d..." % ceili(_player_respawn)
+		if _player_respawn <= 0.0:
+			var team := Net.local_team if Net.is_online else "green_army"
+			var base := Vector3(arena_half - 12, 1, 0) if team == "chrome_legion" \
+				else Vector3(-arena_half + 12, 1, 0)
+			spawn_player(base + Vector3(0, 0, randf_range(-6, 6)))
+			_update_banner()
+	# Hold meter / waves / win: match authority only (clients mirror via hold_synced).
+	if Net.is_online and not Net.is_match_authority():
+		return
 	_time_left -= delta
 	_wave_cd -= delta
 	if _wave_cd <= 0.0:
 		_wave_cd = maxf(9.0 - _wave * 0.45, 4.2 if Game.low_gfx() else 3.6)
-		if not Net.is_online or Net.is_match_authority():
-			_spawn_wave()
+		_spawn_wave()
 	_chrome_scan_cd -= delta
 	if _chrome_scan_cd <= 0.0:
 		_chrome_scan_cd = 0.25 if Game.low_gfx() else 0.15
 		_chrome_cache = _chrome_on_hill()
-	var on_hill := _player_on_hill()
+	var on_hill := _green_on_hill()
 	var contested := _chrome_cache
 	if on_hill and not contested:
 		_hold = minf(_hold + delta * 0.85, HOLD_TARGET)
@@ -108,6 +122,10 @@ func _process(delta: float) -> void:
 	if _banner_cd <= 0.0:
 		_banner_cd = 0.2
 		_update_banner()
+	_hold_sync_cd -= delta
+	if Net.is_online and _hold_sync_cd <= 0.0:
+		_hold_sync_cd = 0.25
+		Net.broadcast_hold_state(_hold, _wave, _time_left)
 	if _hold >= HOLD_TARGET:
 		resolve_team_match(true, "DUNE SECURED — %d waves held" % _wave,
 			"Green locked the dune after %d waves." % _wave)
@@ -116,29 +134,26 @@ func _process(delta: float) -> void:
 		resolve_team_match(false, "CHROME TAKES THE DUNE",
 			"Time's up — Chrome took the dune.")
 		return
-	if _player_respawn > 0.0:
-		_player_respawn -= delta
-		banner.text = "REDEPLOYING IN %d..." % ceili(_player_respawn)
-		if _player_respawn <= 0.0:
-			var team := Net.local_team if Net.is_online else "green_army"
-			var base := Vector3(arena_half - 12, 1, 0) if team == "chrome_legion" \
-				else Vector3(-arena_half + 12, 1, 0)
-			spawn_player(base + Vector3(0, 0, randf_range(-6, 6)))
-			_update_banner()
+
+func _on_hold_synced(hold_amount: float, wave: int, time_left: float) -> void:
+	_hold = hold_amount
+	_wave = wave
+	_time_left = time_left
+	if _label != null:
+		_label.text = "HOLDING  %d%%" % int((_hold / HOLD_TARGET) * 100)
+	_update_banner()
 
 func _pos_on_hill(pos: Vector3, pad: float = 11.0) -> bool:
 	var flat := Vector2(pos.x, pos.z).length()
 	return flat < pad and pos.y >= 0.5 and pos.y < 8.5
 
-func _player_on_hill() -> bool:
-	# Any green human (local or remote puppet) counts for the hold.
-	if Net.is_online and Net.local_team == "chrome_legion":
-		# Chrome humans contest instead of filling the meter.
-		return false
+## Any living green human (local Player or RemoteSoldier) on the mound fills the meter.
+## Chrome peers contest via _chrome_on_hill — do NOT early-out on local chrome team.
+func _green_on_hill() -> bool:
 	for n in get_tree().get_nodes_in_group("team_green_army"):
 		if not is_instance_valid(n) or not (n is Node3D):
 			continue
-		if n is CombatBot:
+		if n is CombatBot or n is RemoteBot:
 			continue
 		if n.has_method("is_dead") and n.is_dead():
 			continue
@@ -146,6 +161,8 @@ func _player_on_hill() -> bool:
 			return true
 	var p := Game.player
 	if p == null or not is_instance_valid(p):
+		return false
+	if Net.is_online and Net.local_team != "green_army":
 		return false
 	if p.current_vehicle is PaperPlane:
 		return false
@@ -226,7 +243,8 @@ func _on_player_died() -> void:
 	if _match_over:
 		return
 	_player_respawn = 3.5
-	_hold = maxf(_hold - 6.0, 0.0)
+	if not Net.is_online or Net.is_match_authority():
+		_hold = maxf(_hold - 6.0, 0.0)
 
 func _update_banner() -> void:
 	if _player_respawn > 0.0:

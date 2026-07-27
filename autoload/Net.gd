@@ -19,6 +19,8 @@ signal bot_died(bot_id: int)
 signal match_ended(winner_is_green: bool, win_title: String, lose_reason: String)
 signal squad_match_ended(winner_squad: String, win_title: String)
 signal score_synced(green_score: int, chrome_score: int)
+signal hold_synced(hold_amount: float, wave: int, time_left: float)
+signal hull_lost(victim_team: String)
 
 const DEFAULT_PORT := 9080
 const MAX_PLAYERS := 8
@@ -327,6 +329,13 @@ func request_start_match() -> void:
 func _rpc_request_start() -> void:
 	if not multiplayer.is_server():
 		return
+	var sid := multiplayer.get_remote_sender_id()
+	# Only lobby leader (lowest human) or listen-host may start.
+	if is_dedicated:
+		if sid != _lowest_human_id():
+			return
+	elif sid != 1 and sid != _lowest_human_id():
+		return
 	_try_start_match()
 
 func _try_start_match() -> void:
@@ -419,15 +428,35 @@ func wallet_for_team(team: String) -> String:
 	return ""
 
 func settle_wager_for_green_win(green_won: bool) -> void:
+	var team := "green_army" if green_won else "chrome_legion"
+	settle_wager_for_team(team)
+
+func settle_wager_for_team(team: String) -> void:
 	if not multiplayer.is_server() or stake_sol <= 0.0:
 		return
-	var team := "green_army" if green_won else "chrome_legion"
 	var w := wallet_for_team(team)
 	if w != "":
 		Wager.room = room_code
 		Wager.stake_sol = stake_sol
 		Wager.api_base = wager_api_url()
 		Wager.settle_winner(w)
+
+func settle_wager_for_peer(peer_id: int) -> void:
+	if not multiplayer.is_server() or stake_sol <= 0.0:
+		return
+	if not peers.has(peer_id):
+		return
+	var w := str(peers[peer_id].get("wallet", ""))
+	if w != "":
+		Wager.room = room_code
+		Wager.stake_sol = stake_sol
+		Wager.api_base = wager_api_url()
+		Wager.settle_winner(w)
+
+func wallet_for_peer(peer_id: int) -> String:
+	if peers.has(peer_id):
+		return str(peers[peer_id].get("wallet", ""))
+	return ""
 
 @rpc("any_peer", "reliable")
 func _rpc_hello(player_name: String, team: String, code: String) -> void:
@@ -538,38 +567,63 @@ func name_for_peer(peer_id: int) -> String:
 func broadcast_pose(pos: Vector3, yaw: float, vel: Vector3) -> void:
 	if not is_online or is_dedicated:
 		return
-	_rpc_pose.rpc(my_id(), pos, yaw, vel)
+	_rpc_pose.rpc(pos, yaw, vel)
 
 @rpc("any_peer", "unreliable_ordered", "call_remote")
-func _rpc_pose(id: int, pos: Vector3, yaw: float, vel: Vector3) -> void:
+func _rpc_pose(pos: Vector3, yaw: float, vel: Vector3) -> void:
+	var id := multiplayer.get_remote_sender_id()
+	if id == 0:
+		return
 	peer_pose.emit(id, pos, yaw, vel)
 
 func report_hit(victim_peer_id: int, amount: float) -> void:
 	if not is_online or amount <= 0.0:
 		return
-	_rpc_hit.rpc(victim_peer_id, amount)
+	_rpc_hit.rpc(victim_peer_id, clampf(amount, 0.0, 400.0))
 
 @rpc("any_peer", "reliable", "call_local")
 func _rpc_hit(victim_id: int, amount: float) -> void:
-	peer_hurt.emit(victim_id, amount)
+	peer_hurt.emit(victim_id, clampf(amount, 0.0, 400.0))
 
 func announce_down() -> void:
 	if not is_online:
 		return
-	_rpc_down.rpc(my_id())
+	_rpc_down.rpc()
 
 @rpc("any_peer", "reliable", "call_local")
-func _rpc_down(id: int) -> void:
+func _rpc_down() -> void:
+	var id := multiplayer.get_remote_sender_id()
+	if id == 0:
+		id = my_id()
 	peer_down.emit(id)
 
-func announce_race_win() -> void:
-	if not is_online:
+## First finisher wins — server arbitrates so match_active clears + wager settles.
+func report_race_finish() -> void:
+	if not is_online or not match_active:
 		return
-	_rpc_race_win.rpc(my_id())
+	if multiplayer.is_server():
+		_finalize_race_win(my_id())
+	else:
+		rpc_id(1, "_rpc_request_race_win")
 
-@rpc("any_peer", "reliable", "call_local")
+@rpc("any_peer", "reliable")
+func _rpc_request_race_win() -> void:
+	if not multiplayer.is_server() or not match_active:
+		return
+	_finalize_race_win(multiplayer.get_remote_sender_id())
+
+func _finalize_race_win(peer_id: int) -> void:
+	if not multiplayer.is_server() or not match_active:
+		return
+	if peer_id <= 0 or not peers.has(peer_id):
+		return
+	settle_wager_for_peer(peer_id)
+	_rpc_race_win.rpc(peer_id)
+
+@rpc("authority", "reliable", "call_local")
 func _rpc_race_win(id: int) -> void:
 	race_won.emit(id)
+	notify_match_over()
 
 ## ---- bot authority sync ---------------------------------------------------
 
@@ -594,6 +648,7 @@ func _rpc_bot_pose(bot_id: int, pos: Vector3, yaw: float) -> void:
 func report_bot_hit(bot_id: int, amount: float) -> void:
 	if not is_online or amount <= 0.0:
 		return
+	amount = clampf(amount, 0.0, 400.0)
 	# Only authority applies damage to the live bot; clients get FX via pose/death.
 	if multiplayer.is_server():
 		bot_hurt.emit(bot_id, amount)
@@ -604,7 +659,7 @@ func report_bot_hit(bot_id: int, amount: float) -> void:
 func _rpc_bot_hit(bot_id: int, amount: float) -> void:
 	if not multiplayer.is_server():
 		return
-	bot_hurt.emit(bot_id, amount)
+	bot_hurt.emit(bot_id, clampf(amount, 0.0, 400.0))
 
 func announce_bot_death(bot_id: int) -> void:
 	if not is_online or not multiplayer.is_server():
@@ -631,6 +686,7 @@ func _rpc_match_end(green_won: bool, win_title: String, lose_reason: String) -> 
 func broadcast_squad_win(winner_squad: String, win_title: String) -> void:
 	if not is_online or not multiplayer.is_server():
 		return
+	settle_wager_for_team(winner_squad)
 	_rpc_squad_win.rpc(winner_squad, win_title)
 
 @rpc("authority", "reliable", "call_local")
@@ -646,3 +702,27 @@ func broadcast_scores(green_score: int, chrome_score: int) -> void:
 @rpc("authority", "reliable", "call_remote")
 func _rpc_scores(green_score: int, chrome_score: int) -> void:
 	score_synced.emit(green_score, chrome_score)
+
+func broadcast_hold_state(hold_amount: float, wave: int, time_left: float) -> void:
+	if not is_online or not multiplayer.is_server():
+		return
+	_rpc_hold.rpc(hold_amount, wave, time_left)
+
+@rpc("authority", "reliable", "call_remote")
+func _rpc_hold(hold_amount: float, wave: int, time_left: float) -> void:
+	hold_synced.emit(hold_amount, wave, time_left)
+
+## Client reports own hull/armor loss so dedicated/listen host can score.
+func report_hull_loss(victim_team: String) -> void:
+	if not is_online:
+		return
+	if multiplayer.is_server():
+		hull_lost.emit(victim_team)
+	else:
+		rpc_id(1, "_rpc_hull_loss", victim_team)
+
+@rpc("any_peer", "reliable")
+func _rpc_hull_loss(victim_team: String) -> void:
+	if not multiplayer.is_server():
+		return
+	hull_lost.emit(victim_team)

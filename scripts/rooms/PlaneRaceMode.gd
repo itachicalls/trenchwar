@@ -115,12 +115,16 @@ func _setup_mode() -> void:
 	Events.notify.emit("AIR RACE: follow the green gate. Bright sky circuit — stay high and thread them!")
 
 func _on_net_race_won(peer_id: int) -> void:
-	if _match_over or _finished:
+	if _match_over:
 		return
 	_finished = true
 	if peer_id == Net.my_id():
-		return
-	lose_match("%s finished the circuit first." % Net.name_for_peer(peer_id))
+		var bonus := maxi(0, int(_time_left) * 2)
+		Game.coins += 20 + bonus
+		Events.coins_changed.emit(Game.coins)
+		win_match("AIR RACE WIN  +%d COINS" % (20 + bonus))
+	else:
+		lose_match("%s finished the circuit first." % Net.name_for_peer(peer_id))
 
 func _build_course() -> void:
 	# Premade clutter as visual islands (landable, not flight blockers in the lane).
@@ -230,11 +234,13 @@ func _on_hoop_body(body: Node, area: Area3D) -> void:
 	if _next >= HOOP_COUNT:
 		_finished = true
 		if Net.is_online:
-			Net.announce_race_win()
-		var bonus := maxi(0, int(_time_left) * 2)
-		Game.coins += 20 + bonus
-		Events.coins_changed.emit(Game.coins)
-		win_match("AIR RACE CLEARED  +%d COINS" % (20 + bonus))
+			# Server arbitrates winner + clears match_active / settles wager.
+			Net.report_race_finish()
+		else:
+			var bonus := maxi(0, int(_time_left) * 2)
+			Game.coins += 20 + bonus
+			Events.coins_changed.emit(Game.coins)
+			win_match("AIR RACE CLEARED  +%d COINS" % (20 + bonus))
 	else:
 		_highlight_next()
 	_update_banner()

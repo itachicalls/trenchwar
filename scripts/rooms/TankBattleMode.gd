@@ -1,8 +1,8 @@
 class_name TankBattleMode
 extends ArenaBase
 ## TANK BATTLE — plastic armor duel in THE SANDBOX.
-## Offline: board a Green hull vs Chrome AI. Online: humans on either side
-## deploy boarded; bots fill empty armor slots. First to SCORE_TARGET hull kills.
+## Offline: board a Green hull vs Chrome AI. Online: each human boards a local
+## hull; pose sync shows boarded remotes. Scores are match-authority only.
 
 const SCORE_TARGET := 8
 const GREEN := "res://data/factions/green_army.tres"
@@ -32,6 +32,7 @@ func _setup_mode() -> void:
 	var yaw := -90.0 if team == "chrome_legion" else 90.0
 	var player: Player = null
 	if Net.is_online:
+		Net.hull_lost.connect(_on_hull_lost_report)
 		player = spawn_online_humans({"green_army": _green_base(), "chrome_legion": _chrome_base()})
 	else:
 		player = spawn_player(base)
@@ -42,21 +43,10 @@ func _setup_mode() -> void:
 		if player != null:
 			_player_tank.call_deferred("force_board", player)
 	var enemy_tanks := bot_slots(3 if Game.low_gfx() else 4, "chrome_legion")
-	# Chrome humans replace some AI hulls; always keep at least one AI if solo green.
 	if Net.is_online and Net.humans_on_team("chrome_legion") > 0:
 		enemy_tanks = maxi(1, enemy_tanks)
 	for i in enemy_tanks:
 		_spawn_enemy_tank(i)
-	# Extra boarded hulls for chrome human peers beyond the local player.
-	if Net.is_online:
-		for id in Net.peers.keys():
-			var pid: int = int(id)
-			if pid == Net.my_id():
-				continue
-			if Net.team_for_peer(pid) == "chrome_legion":
-				spawn_tank(_chrome_base() + Vector3(0, 0, randf_range(-10, 10)), -90.0)
-			elif Net.team_for_peer(pid) == "green_army":
-				spawn_tank(_green_base() + Vector3(0, 0, randf_range(-10, 10)), 90.0)
 	var flank := bot_slots(2 if Game.low_gfx() else 3, "chrome_legion")
 	var green_flank := bot_slots(2 if Game.low_gfx() else 3, "green_army")
 	for i in flank:
@@ -86,11 +76,12 @@ func _process(delta: float) -> void:
 		if not _match_over:
 			_player_respawn = 5.0
 			_remount_existing = false
-	for job in _spawn_queue.duplicate():
-		job.t -= delta
-		if job.t <= 0.0:
-			_spawn_queue.erase(job)
-			_spawn_enemy_tank(randi() % 4)
+	if not Net.is_online or Net.is_match_authority():
+		for job in _spawn_queue.duplicate():
+			job.t -= delta
+			if job.t <= 0.0:
+				_spawn_queue.erase(job)
+				_spawn_enemy_tank(randi() % 4)
 	if _player_respawn > 0.0:
 		_player_respawn -= delta
 		banner.text = ("REBOARD IN %d..." if _remount_existing else "NEW HULL IN %d...") % ceili(_player_respawn)
@@ -99,10 +90,23 @@ func _process(delta: float) -> void:
 
 func _score_against_local() -> void:
 	var team := Net.local_team if Net.is_online else "green_army"
+	if Net.is_online:
+		Net.report_hull_loss(team)
+		return
 	if team == "green_army":
 		chrome_score += 1
 	else:
 		green_score += 1
+
+func _on_hull_lost_report(victim_team: String) -> void:
+	if not Net.is_match_authority() or _match_over:
+		return
+	if victim_team == "green_army":
+		chrome_score += 1
+	else:
+		green_score += 1
+	_update_banner()
+	_check_win()
 
 func _respawn_player_armor() -> void:
 	var team := Net.local_team if Net.is_online else "green_army"
@@ -127,18 +131,15 @@ func _respawn_player_armor() -> void:
 func _on_arena_unit_died(unit: Node) -> void:
 	if _match_over:
 		return
+	if Net.is_online and not Net.is_match_authority():
+		return
 	if unit is ToyTank and (unit as ToyTank).ai_controlled:
 		green_score += 1
 		_spawn_queue.append({"t": 6.0 if not Game.low_gfx() else 8.0})
 		_update_banner()
 		_check_win()
-	elif unit is RemoteSoldier and unit.faction != null:
-		if unit.faction.id == "green_army":
-			chrome_score += 1
-		else:
-			green_score += 1
-		_update_banner()
-		_check_win()
+	# Human hull losses come through Net.hull_lost (report_hull_loss) — don't
+	# also score RemoteSoldier deaths or we double-count boarded players.
 
 func _on_player_died() -> void:
 	if _match_over:
@@ -156,12 +157,19 @@ func _on_player_died() -> void:
 		_hull_lost = true
 		_remount_existing = false
 
+func _on_score_synced(g: int, c: int) -> void:
+	green_score = g
+	chrome_score = c
+	banner.text = "GREEN ARMOR  %d   —   %d  CHROME" % [green_score, chrome_score]
+
 func _update_banner() -> void:
 	banner.text = "GREEN ARMOR  %d   —   %d  CHROME" % [green_score, chrome_score]
 	if Net.is_online and Net.is_match_authority():
 		Net.broadcast_scores(green_score, chrome_score)
 
 func _check_win() -> void:
+	if Net.is_online and not Net.is_match_authority():
+		return
 	if green_score >= SCORE_TARGET:
 		resolve_team_match(true,
 			"GREEN ARMOR WINS  %d - %d" % [green_score, chrome_score],

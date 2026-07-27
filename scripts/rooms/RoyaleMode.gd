@@ -142,22 +142,26 @@ func _run_zone(delta: float) -> void:
 			Sfx.play("shoot_heavy", -6.0, 0.4)
 
 func _zone_damage() -> void:
-	var victims: Array[Node] = []
-	victims.append_array(get_tree().get_nodes_in_group("combat_bots"))
+	# Local player HP is client-owned — each peer damages only themselves.
 	if Game.player != null and is_instance_valid(Game.player):
-		# Boarded: sweep damages the hull/plane so camping outside in armor fails.
 		var veh = Game.player.current_vehicle
-		if veh != null and is_instance_valid(veh):
-			victims.append(veh)
-		else:
-			victims.append(Game.player)
-	for v in victims:
+		var self_v: Node = veh if veh != null and is_instance_valid(veh) else Game.player
+		if self_v is Node3D and Vector2(self_v.global_position.x, self_v.global_position.z).length() > zone_radius:
+			if self_v.has_method("take_damage") and not (self_v.has_method("is_dead") and self_v.is_dead()):
+				self_v.take_damage(ZONE_DPS)
+				if _zone_notify_cd <= 0.0:
+					_zone_notify_cd = 2.5
+					Events.notify.emit("You're outside the zone! Get inside the light!")
+	# Live bots: match authority only (RemoteSoldier/RemoteBot must NOT be hit here —
+	# that used to multiply zone DPS by peer count via report_hit).
+	if Net.is_online and not Net.is_match_authority():
+		return
+	for v in get_tree().get_nodes_in_group("combat_bots"):
+		if v is RemoteSoldier or v is RemoteBot:
+			continue
 		if v is Node3D and Vector2(v.global_position.x, v.global_position.z).length() > zone_radius:
 			if v.has_method("take_damage") and not (v.has_method("is_dead") and v.is_dead()):
 				v.take_damage(ZONE_DPS)
-				if _zone_notify_cd <= 0.0 and (v == Game.player or (Game.player != null and v == Game.player.current_vehicle)):
-					_zone_notify_cd = 2.5
-					Events.notify.emit("You're outside the zone! Get inside the light!")
 
 func _respawns_allowed() -> bool:
 	return stage < NO_RESPAWN_STAGE
