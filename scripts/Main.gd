@@ -785,9 +785,9 @@ func _show_modes() -> void:
 		_button(box, "PAPER PLANE RACE  —  HOOP COURSE", func(): _show_briefing("plane_race"))
 		_button(box, "HOLD THE DUNE  —  KING OF THE HILL", func(): _show_briefing("hold_dune"))
 	_spacer(box, 6)
-	_button(box, "ONLINE PVP  —  HOST / JOIN", _show_online_lobby, UiTheme.AMBER)
+	_button(box, "ONLINE PVP  —  PLAY & WAGER SOL", _show_online_lobby, UiTheme.AMBER)
 	_spacer(box, 6)
-	_subtitle(box, "Offline = vs bots. Online lobby plays the same modes as PvP (bots fill empty slots).", 12, Color(0.6, 0.65, 0.6))
+	_subtitle(box, "Offline = vs bots. Online = humans worldwide. Optional SOL stakes (Phantom) in the lobby.", 12, Color(0.6, 0.65, 0.6))
 	_spacer(box, 10)
 	_button(box, "BACK", _show_main_menu)
 
@@ -798,6 +798,54 @@ var _online_code: LineEdit
 var _show_advanced_join := false
 var _lobby_refreshing := false
 
+func _add_sol_wager_panel(box: VBoxContainer, in_room: bool) -> void:
+	## Visible stake UI — shown before join and again inside the room.
+	_title(box, "WAGER SOL", 26 if Game.compact_ui() else 28, Color(0.95, 0.82, 0.3))
+	_subtitle(box, "Optional 1v1 pot on Solana devnet. Both deposit → winner takes both.", 13, Color(0.85, 0.78, 0.45))
+	_spacer(box, 4)
+	if OS.has_feature("web"):
+		var wlabel := "CONNECT PHANTOM WALLET" if SolBridge.pubkey == "" else ("WALLET  %s" % SolBridge.short_key())
+		_button(box, wlabel, func():
+			if SolBridge.pubkey == "":
+				SolBridge.connect_wallet()
+			else:
+				SolBridge.disconnect_wallet()
+				Net.set_wallet("")
+			_show_online_lobby(), UiTheme.AMBER)
+	else:
+		_subtitle(box, "Open https://trenchwar.vercel.app in a browser with Phantom to stake.", 12, Color(0.65, 0.7, 0.6))
+	# Stake pick: anyone before join; lobby leader once in a room.
+	var can_pick := (not in_room) or Net.is_lobby_leader() or Net.is_host
+	if can_pick:
+		_subtitle(box, "CHOOSE STAKE", 12, Color(0.75, 0.7, 0.4))
+		for s in Wager.STAKE_OPTIONS:
+			var lab := "NO STAKE" if s <= 0.0 else ("%s SOL" % str(s))
+			if is_equal_approx(Net.stake_sol, s):
+				lab = "▶  " + lab
+			var amt: float = float(s)
+			_button(box, lab, func():
+				Net.set_stake(amt)
+				_show_online_lobby(), Color(0.9, 0.75, 0.25) if is_equal_approx(Net.stake_sol, s) else Color.TRANSPARENT)
+	else:
+		_subtitle(box, "STAKE  %s SOL  (set by lobby leader)" % str(Net.stake_sol), 14, Color(0.9, 0.8, 0.4))
+	if in_room and Net.stake_sol > 0.0:
+		_subtitle(box, "Pot status: %s" % Wager.status.to_upper(), 13, Color(0.7, 0.85, 0.7))
+		if OS.has_feature("web"):
+			_button(box, "CREATE ESCROW / JOIN POT", func():
+				Wager.configure(Net.wager_api_url(), Net.solana_cluster())
+				Wager.create_or_join(Net.room_code)
+				_show_online_lobby(), UiTheme.CYAN)
+			if Wager.escrow != "":
+				_button(box, "DEPOSIT %s SOL TO POT" % str(Net.stake_sol), func():
+					Wager.deposit_now()
+					_show_online_lobby(), UiTheme.GREEN)
+				_button(box, "REFRESH POT STATUS", func():
+					Wager.refresh_status()
+					_show_online_lobby())
+		elif Wager.pot_ready:
+			_subtitle(box, "Pot funded — ready to start.", 13, UiTheme.GREEN)
+	_spacer(box, 8)
+
 func _show_online_lobby() -> void:
 	var box := _menu_base(0.74)
 	_title(box, "ONLINE PVP", 36 if Game.compact_ui() else 44, UiTheme.AMBER)
@@ -805,7 +853,8 @@ func _show_online_lobby() -> void:
 	_spacer(box, 8)
 	if not Net.is_online:
 		_subtitle(box, "Play worldwide via the public server. Mobile & web join — they cannot host.", 13, Color(0.7, 0.72, 0.65))
-		_spacer(box, 8)
+		_spacer(box, 6)
+		_add_sol_wager_panel(box, false)
 		_button(box, "QUICK PLAY", func():
 			Net.quick_play(Net.selected_mode)
 			_show_online_lobby(), UiTheme.GREEN)
@@ -852,44 +901,7 @@ func _show_online_lobby() -> void:
 		_subtitle(box, "ROOM CODE  %s" % Net.room_code, 18, UiTheme.CYAN)
 		_subtitle(box, "Share this code with friends worldwide.", 12, Color(0.7, 0.75, 0.65))
 		_spacer(box, 6)
-		# ---- Solana stake (web/mobile) ----
-		_subtitle(box, "SOL STAKE  (1v1 pot — winner takes both)", 12, Color(0.85, 0.75, 0.35))
-		if OS.has_feature("web"):
-			var wlabel := "CONNECT PHANTOM" if SolBridge.pubkey == "" else ("WALLET  %s" % SolBridge.short_key())
-			_button(box, wlabel, func():
-				if SolBridge.pubkey == "":
-					SolBridge.connect_wallet()
-				else:
-					SolBridge.disconnect_wallet()
-					Net.set_wallet("")
-				_show_online_lobby(), UiTheme.AMBER)
-		else:
-			_subtitle(box, "Open the web build to stake SOL (Phantom).", 12, Color(0.6, 0.65, 0.6))
-		if Net.is_lobby_leader() or Net.is_host:
-			for s in Wager.STAKE_OPTIONS:
-				var lab := "NO STAKE" if s <= 0.0 else ("STAKE  %s SOL" % str(s))
-				if is_equal_approx(Net.stake_sol, s):
-					lab += "  ✓"
-				var amt: float = float(s)
-				_button(box, lab, func():
-					Net.set_stake(amt)
-					_show_online_lobby())
-		else:
-			_subtitle(box, "STAKE  %s SOL" % str(Net.stake_sol), 14, Color(0.9, 0.8, 0.4))
-		if Net.stake_sol > 0.0 and OS.has_feature("web"):
-			_subtitle(box, "Wager: %s" % Wager.status.to_upper(), 12, Color(0.7, 0.8, 0.7))
-			_button(box, "CREATE ESCROW / JOIN POT", func():
-				Wager.configure(Net.wager_api_url(), Net.solana_cluster())
-				Wager.create_or_join(Net.room_code)
-				_show_online_lobby(), UiTheme.CYAN)
-			if Wager.escrow != "":
-				_button(box, "DEPOSIT %s SOL" % str(Net.stake_sol), func():
-					Wager.deposit_now()
-					_show_online_lobby(), UiTheme.GREEN)
-				_button(box, "REFRESH POT STATUS", func():
-					Wager.refresh_status()
-					_show_online_lobby())
-		_spacer(box, 6)
+		_add_sol_wager_panel(box, true)
 		_subtitle(box, "TEAM", 12, Color(0.55, 0.7, 0.85))
 		var teams := [
 			["GREEN ARMY", "green_army", UiTheme.GREEN],
