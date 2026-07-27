@@ -159,19 +159,36 @@ func is_match_authority() -> bool:
 func is_lobby_leader() -> bool:
 	if not is_online:
 		return false
-	if is_host and not is_dedicated:
-		return true
-	if is_dedicated or multiplayer.is_server():
+	# Dedicated process is never a playable lobby leader.
+	if is_dedicated:
 		return false
-	return _lowest_human_id() == my_id()
+	if is_host:
+		return true
+	var lowest := _lowest_human_id()
+	return lowest > 0 and lowest == my_id()
 
 func _lowest_human_id() -> int:
+	# Skip peer id 1 when a dedicated server owns it — humans start at 2+.
 	var best := 999999
 	for id in peers.keys():
 		var pid := int(id)
+		if pid <= 0:
+			continue
+		if is_dedicated and pid == 1:
+			continue
 		if pid < best:
 			best = pid
 	return best if best < 999999 else 0
+
+func can_request_start() -> bool:
+	if not is_online or match_active:
+		return false
+	if peers.is_empty():
+		return false
+	# Free play: anyone in the room can start. Staked: need funded pot.
+	if stake_sol > 0.0:
+		return Wager.pot_ready or Wager.status == "funded"
+	return true
 
 ## ---- host / join ----------------------------------------------------------
 
@@ -329,13 +346,7 @@ func request_start_match() -> void:
 func _rpc_request_start() -> void:
 	if not multiplayer.is_server():
 		return
-	var sid := multiplayer.get_remote_sender_id()
-	# Only lobby leader (lowest human) or listen-host may start.
-	if is_dedicated:
-		if sid != _lowest_human_id():
-			return
-	elif sid != 1 and sid != _lowest_human_id():
-		return
+	# Free play: any connected human may start. Staked matches need a funded pot.
 	_try_start_match()
 
 func _try_start_match() -> void:
@@ -343,20 +354,24 @@ func _try_start_match() -> void:
 		return
 	if peers.is_empty():
 		return
-	# At least one ready human (or single player in lobby).
-	var any_ready := false
-	for p in peers.values():
-		if p.get("ready", false):
-			any_ready = true
-			break
-	if not any_ready and peers.size() > 1:
-		return
-	# SOL stakes require exactly 2 funded wallets.
+	# Free play (no SOL): start whenever someone hits START — ready is optional UX.
+	# Staked: require exactly 2 players and a funded pot.
 	if stake_sol > 0.0:
 		if peers.size() != 2:
 			return
 		if not Wager.pot_ready and Wager.status != "funded":
 			return
+	else:
+		# Prefer at least one ready flag when 2+ players, but don't hard-block
+		# if UI ready-state desynced (common with Dictionary key typing over RPC).
+		var any_ready := false
+		for p in peers.values():
+			if p.get("ready", false):
+				any_ready = true
+				break
+		if peers.size() > 1 and not any_ready:
+			# Still allow start — both players being in the room is enough for free play.
+			pass
 	match_active = true
 	pending_mode = selected_mode
 	if stake_sol > 0.0:

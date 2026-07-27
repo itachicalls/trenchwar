@@ -955,11 +955,17 @@ func _show_online_lobby() -> void:
 		_button(box, "READY: %s" % ("YES" if ready_now else "NO"), func():
 			Net.set_ready(not ready_now)
 			_show_online_lobby(), UiTheme.AMBER)
-		if Net.is_lobby_leader() or Net.is_host:
-			var start_lab := "START MATCH"
-			if Net.stake_sol > 0.0 and not Wager.pot_ready:
-				start_lab = "START (waiting for SOL deposits)"
-			_button(box, start_lab, func():
+		_spacer(box, 4)
+		# Free play: every peer sees START. Staked: show waiting until pot is funded.
+		if Net.stake_sol > 0.0 and not Net.can_request_start():
+			_subtitle(box, "START locked — both players must deposit SOL first.", 13, Color(0.95, 0.55, 0.4))
+			_button(box, "START (waiting for SOL deposits)", func():
+				Events.notify.emit("Both players must deposit before a staked match.")
+				_show_online_lobby(), Color(0.5, 0.5, 0.45))
+		else:
+			var stake_note := "FREE PLAY" if Net.stake_sol <= 0.0 else ("STAKE  %s SOL" % str(Net.stake_sol))
+			_subtitle(box, "Anyone can start  •  %s" % stake_note, 13, Color(0.55, 0.85, 0.55))
+			_button(box, "START MATCH", func():
 				Game.capture_mouse()
 				Net.request_start_match(), UiTheme.GREEN)
 		_spacer(box, 6)
