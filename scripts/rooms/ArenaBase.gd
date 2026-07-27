@@ -34,16 +34,23 @@ func _ready() -> void:
 		sub_banner = Label.new()
 		add_child(banner)
 		add_child(sub_banner)
-	_setup_mode()          # subclass: spawn combatants, set rules
+	# Bake BEFORE spawning bots — otherwise agents wake with an empty map and
+	# stall at spawn (especially noticeable in online dedicated VS).
 	_bake_navmesh()
+	_setup_mode()          # subclass: spawn combatants, set rules
 	Events.unit_died.connect(_on_arena_unit_died)
 	Events.player_died.connect(_on_player_died_base)
 	if Net.is_online:
 		Net.peer_pose.connect(_on_net_pose)
 		Net.peer_hurt.connect(_on_net_hurt)
 		Net.peer_down.connect(_on_net_down)
+		Net.peer_shot.connect(_on_net_shot)
+		Net.peer_health.connect(_on_net_health)
+		Net.hit_landed.connect(_on_hit_landed)
+		Net.kill_feed.connect(_on_kill_feed)
 		Net.bot_spawned.connect(_on_bot_spawned)
 		Net.bot_pose.connect(_on_bot_pose)
+		Net.bot_shot.connect(_on_bot_shot)
 		Net.bot_hurt.connect(_on_bot_hurt)
 		Net.bot_died.connect(_on_bot_died)
 		Net.match_ended.connect(_on_net_match_ended)
@@ -60,6 +67,9 @@ func _teardown_net() -> void:
 		[Net.bot_spawned, _on_bot_spawned], [Net.bot_pose, _on_bot_pose], [Net.bot_hurt, _on_bot_hurt],
 		[Net.bot_died, _on_bot_died], [Net.match_ended, _on_net_match_ended],
 		[Net.squad_match_ended, _on_squad_match_ended], [Net.score_synced, _on_score_synced],
+		[Net.peer_shot, _on_net_shot], [Net.peer_health, _on_net_health],
+		[Net.hit_landed, _on_hit_landed], [Net.kill_feed, _on_kill_feed],
+		[Net.bot_shot, _on_bot_shot],
 	]:
 		if sig[0].is_connected(sig[1]):
 			sig[0].disconnect(sig[1])
@@ -80,7 +90,10 @@ func _process(delta: float) -> void:
 			var yaw: float = bot.rotation.y
 			if bot.body_rig != null:
 				yaw = bot.body_rig.rotation.y
-			Net.broadcast_bot_pose(int(id), bot.global_position, yaw)
+			var hp := 1.0
+			if bot.health != null and bot.health.max_health > 0.0:
+				hp = bot.health.current / bot.health.max_health
+			Net.broadcast_bot_pose(int(id), bot.global_position, yaw, hp)
 
 ## Death spectator view: the player node (and its camera) is freed on death,
 ## so cut to a high angle over the arena until the respawn.
@@ -296,14 +309,52 @@ func _on_net_pose(peer_id: int, pos: Vector3, yaw: float, vel: Vector3) -> void:
 	if r != null and is_instance_valid(r):
 		r.apply_net_pose(pos, yaw, vel)
 
-func _on_net_hurt(peer_id: int, amount: float) -> void:
+func _on_net_hurt(peer_id: int, amount: float, attacker_id: int) -> void:
 	if peer_id == Net.my_id():
 		if Game.player != null and is_instance_valid(Game.player):
-			Game.player.take_damage(amount, null)
+			Game.player.take_net_damage(amount, attacker_id)
 		return
 	var r: RemoteSoldier = _net_remotes.get(peer_id)
 	if r != null and is_instance_valid(r):
 		r.apply_damage_visual(amount)
+
+## A peer fired: replay it from their puppet so the shot is visible, audible
+## and aimed exactly where they aimed it.
+func _on_net_shot(peer_id: int, origin: Vector3, dir: Vector3, weapon_path: String) -> void:
+	if peer_id == Net.my_id() or Net.is_dedicated:
+		return
+	var r: RemoteSoldier = _net_remotes.get(peer_id)
+	if r == null or not is_instance_valid(r):
+		return
+	r.fire_visual(origin, dir, weapon_path)
+
+func _on_net_health(peer_id: int, hp: float, max_hp: float) -> void:
+	if peer_id == Net.my_id():
+		return
+	var r: RemoteSoldier = _net_remotes.get(peer_id)
+	if r != null and is_instance_valid(r):
+		r.apply_net_health(hp, max_hp)
+
+## The hitmarker and damage number already fired locally when our bullet
+## connected. This is the victim's own verdict arriving a round-trip later —
+## it only has to settle the one thing a local guess can't: the kill.
+func _on_hit_landed(victim_id: int, _amount: float, killed: bool) -> void:
+	if not killed:
+		return
+	Events.hit_confirmed.emit(true)
+	var r: RemoteSoldier = _net_remotes.get(victim_id)
+	if r != null and is_instance_valid(r):
+		r.apply_net_health(0.0, r.health.max_health)
+
+func _on_kill_feed(killer_id: int, victim_id: int) -> void:
+	if victim_id <= 0:
+		return
+	var victim := "YOU" if victim_id == Net.my_id() else Net.name_for_peer(victim_id).to_upper()
+	if killer_id <= 0:
+		Events.notify.emit("%s WAS ELIMINATED" % victim)
+		return
+	var killer := "YOU" if killer_id == Net.my_id() else Net.name_for_peer(killer_id).to_upper()
+	Events.notify.emit("%s ELIMINATED %s" % [killer, victim])
 
 func _on_net_down(peer_id: int) -> void:
 	if peer_id == Net.my_id():
@@ -359,9 +410,10 @@ func bot_slots(base_count: int, team: String) -> int:
 	# Clients never simulate bots — authority fills slots.
 	if Net.is_online and not Net.is_match_authority():
 		return 0
-	if not Net.is_online:
+	# Online VS keeps the full squad — humans do NOT replace NPC slots.
+	if Net.is_online:
 		return base_count
-	return maxi(0, base_count - Net.humans_on_team(team))
+	return base_count
 
 func spawn_bot(faction_path: String, pos: Vector3, variant_name: String = "trooper") -> CombatBot:
 	if Net.is_online and not Net.is_match_authority():
@@ -369,7 +421,10 @@ func spawn_bot(faction_path: String, pos: Vector3, variant_name: String = "troop
 	var bot := CombatBot.new()
 	bot.faction = load(faction_path)
 	bot.variant = variant_name
-	var wander: Array[Vector3] = [pos, pos * 0.3, Vector3(randf_range(-12, 12), 0, randf_range(-12, 12))]
+	# Push toward midfield / enemy so bots leave the spawn berm.
+	var mid := Vector3(pos.x * 0.25, 1.0, pos.z * 0.25)
+	var flank := Vector3(randf_range(-14, 14), 1.0, randf_range(-14, 14))
+	var wander: Array[Vector3] = [pos, mid, flank, Vector3.ZERO]
 	bot.patrol_points = wander
 	add_child(bot)
 	bot.position = pos
@@ -400,12 +455,19 @@ func _on_bot_spawned(bot_id: int, team: String, pos: Vector3, variant: String) -
 	puppet.global_position = pos
 	_net_bots[bot_id] = puppet
 
-func _on_bot_pose(bot_id: int, pos: Vector3, yaw: float) -> void:
+func _on_bot_pose(bot_id: int, pos: Vector3, yaw: float, hp_ratio: float) -> void:
 	if Net.is_match_authority():
 		return
 	var b = _net_bots.get(bot_id)
 	if b is RemoteBot and is_instance_valid(b):
-		b.apply_net_pose(pos, yaw)
+		b.apply_net_pose(pos, yaw, hp_ratio)
+
+func _on_bot_shot(bot_id: int, origin: Vector3, dir: Vector3, weapon_path: String) -> void:
+	if Net.is_match_authority():
+		return
+	var b = _net_bots.get(bot_id)
+	if b is RemoteBot and is_instance_valid(b):
+		b.fire_visual(origin, dir, weapon_path)
 
 func _on_bot_hurt(bot_id: int, amount: float) -> void:
 	if not Net.is_match_authority():

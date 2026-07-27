@@ -9,11 +9,16 @@ signal peer_list_changed
 signal connection_failed(reason: String)
 signal connection_succeeded
 signal peer_pose(peer_id: int, pos: Vector3, yaw: float, vel: Vector3)
-signal peer_hurt(peer_id: int, amount: float)
+signal peer_hurt(peer_id: int, amount: float, attacker_id: int)
 signal peer_down(peer_id: int)
+signal peer_shot(peer_id: int, origin: Vector3, dir: Vector3, weapon_path: String)
+signal peer_health(peer_id: int, hp: float, max_hp: float)
+signal hit_landed(victim_id: int, amount: float, killed: bool)
+signal kill_feed(killer_id: int, victim_id: int)
 signal race_won(peer_id: int)
 signal bot_spawned(bot_id: int, team: String, pos: Vector3, variant: String)
-signal bot_pose(bot_id: int, pos: Vector3, yaw: float)
+signal bot_pose(bot_id: int, pos: Vector3, yaw: float, hp_ratio: float)
+signal bot_shot(bot_id: int, origin: Vector3, dir: Vector3, weapon_path: String)
 signal bot_hurt(bot_id: int, amount: float)
 signal bot_died(bot_id: int)
 signal match_ended(winner_is_green: bool, win_title: String, lose_reason: String)
@@ -591,6 +596,44 @@ func _rpc_pose(pos: Vector3, yaw: float, vel: Vector3) -> void:
 		return
 	peer_pose.emit(id, pos, yaw, vel)
 
+## Every human shot is replayed on the other clients as a cosmetic tracer from
+## that peer's puppet, so a firefight looks identical on both screens.
+func broadcast_shot(origin: Vector3, dir: Vector3, weapon_path: String) -> void:
+	if not is_online or is_dedicated:
+		return
+	_rpc_shot.rpc(origin, dir, weapon_path)
+
+@rpc("any_peer", "unreliable", "call_remote")
+func _rpc_shot(origin: Vector3, dir: Vector3, weapon_path: String) -> void:
+	var id := multiplayer.get_remote_sender_id()
+	if id == 0:
+		return
+	peer_shot.emit(id, origin, dir, weapon_path)
+
+## HP lives on the machine that owns the body, so that owner publishes it
+## rather than letting every client guess from the hits it happened to see.
+var _hp_sent := -1.0
+var _hp_sent_at := 0.0
+
+func broadcast_health(hp: float, max_hp: float, force: bool = false) -> void:
+	if not is_online or is_dedicated:
+		return
+	# Regen ticks every frame; rate-limit so trickle healing can't flood the
+	# link, but never delay a real damage or death packet.
+	var now := float(Time.get_ticks_msec()) * 0.001
+	if not force and (absf(hp - _hp_sent) < 1.0 or now - _hp_sent_at < 0.1):
+		return
+	_hp_sent = hp
+	_hp_sent_at = now
+	_rpc_health.rpc(hp, max_hp)
+
+@rpc("any_peer", "unreliable_ordered", "call_remote")
+func _rpc_health(hp: float, max_hp: float) -> void:
+	var id := multiplayer.get_remote_sender_id()
+	if id == 0:
+		return
+	peer_health.emit(id, maxf(hp, 0.0), maxf(max_hp, 1.0))
+
 func report_hit(victim_peer_id: int, amount: float) -> void:
 	if not is_online or amount <= 0.0:
 		return
@@ -598,19 +641,43 @@ func report_hit(victim_peer_id: int, amount: float) -> void:
 
 @rpc("any_peer", "reliable", "call_local")
 func _rpc_hit(victim_id: int, amount: float) -> void:
-	peer_hurt.emit(victim_id, clampf(amount, 0.0, 400.0))
+	var attacker := multiplayer.get_remote_sender_id()
+	if attacker == 0:
+		attacker = my_id()
+	peer_hurt.emit(victim_id, clampf(amount, 0.0, 400.0), attacker)
 
-func announce_down() -> void:
+## Only the victim can say a hit truly landed and how much it took off, so the
+## hitmarker a shooter sees is the victim's own accounting, not a local guess.
+func confirm_hit(attacker_id: int, amount: float, killed: bool) -> void:
+	if not is_online or amount <= 0.0 or attacker_id <= 0 or attacker_id == my_id():
+		return
+	if not peers.has(attacker_id):
+		return
+	_rpc_hit_ack.rpc_id(attacker_id, amount, killed)
+
+@rpc("any_peer", "reliable")
+func _rpc_hit_ack(amount: float, killed: bool) -> void:
+	var victim := multiplayer.get_remote_sender_id()
+	if victim == 0:
+		return
+	hit_landed.emit(victim, maxf(amount, 0.0), killed)
+
+func announce_down(killer_id: int = 0) -> void:
 	if not is_online:
 		return
-	_rpc_down.rpc()
+	_rpc_down.rpc(killer_id)
 
 @rpc("any_peer", "reliable", "call_local")
-func _rpc_down() -> void:
+func _rpc_down(killer_id: int = 0) -> void:
 	var id := multiplayer.get_remote_sender_id()
 	if id == 0:
 		id = my_id()
 	peer_down.emit(id)
+	kill_feed.emit(killer_id, id)
+
+## Fresh body, fresh HP accounting — force the next health packet through.
+func reset_health_sync() -> void:
+	_hp_sent = -1.0
 
 ## First finisher wins — server arbitrates so match_active clears + wager settles.
 func report_race_finish() -> void:
@@ -651,14 +718,25 @@ func spawn_bot_net(bot_id: int, team: String, pos: Vector3, variant: String) -> 
 func _rpc_bot_spawn(bot_id: int, team: String, pos: Vector3, variant: String) -> void:
 	bot_spawned.emit(bot_id, team, pos, variant)
 
-func broadcast_bot_pose(bot_id: int, pos: Vector3, yaw: float) -> void:
+func broadcast_bot_pose(bot_id: int, pos: Vector3, yaw: float, hp_ratio: float = 1.0) -> void:
 	if not is_online or not multiplayer.is_server():
 		return
-	_rpc_bot_pose.rpc(bot_id, pos, yaw)
+	_rpc_bot_pose.rpc(bot_id, pos, yaw, hp_ratio)
 
 @rpc("authority", "unreliable_ordered", "call_remote")
-func _rpc_bot_pose(bot_id: int, pos: Vector3, yaw: float) -> void:
-	bot_pose.emit(bot_id, pos, yaw)
+func _rpc_bot_pose(bot_id: int, pos: Vector3, yaw: float, hp_ratio: float = 1.0) -> void:
+	bot_pose.emit(bot_id, pos, yaw, clampf(hp_ratio, 0.0, 1.0))
+
+## Bots only truly exist on the authority, so their shots have to be relayed
+## or clients watch NPCs kill them with invisible bullets.
+func broadcast_bot_shot(bot_id: int, origin: Vector3, dir: Vector3, weapon_path: String) -> void:
+	if not is_online or not multiplayer.is_server():
+		return
+	_rpc_bot_shot.rpc(bot_id, origin, dir, weapon_path)
+
+@rpc("authority", "unreliable", "call_remote")
+func _rpc_bot_shot(bot_id: int, origin: Vector3, dir: Vector3, weapon_path: String) -> void:
+	bot_shot.emit(bot_id, origin, dir, weapon_path)
 
 func report_bot_hit(bot_id: int, amount: float) -> void:
 	if not is_online or amount <= 0.0:

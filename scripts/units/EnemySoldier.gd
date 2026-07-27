@@ -179,7 +179,10 @@ func _physics_process(delta: float) -> void:
 	# Deep sleep only while truly idle on patrol — ALERT/COMBAT bots must keep
 	# pathing or they freeze at the arena rim then slam into props when woken.
 	var sleep_sq := 4200.0 if Game.low_gfx() else 2800.0
-	var deep_sleep := Game.low_gfx() and state == AiState.PATROL and dist_sq > sleep_sq
+	# Arena CombatBots must never deep-sleep — dedicated servers have no
+	# Game.player, and far-side squads would freeze in online VS.
+	var deep_sleep := Game.low_gfx() and state == AiState.PATROL and dist_sq > sleep_sq \
+		and not (self is CombatBot)
 	if deep_sleep:
 		_think_timer -= delta
 		if _think_timer <= 0.0:
@@ -393,10 +396,14 @@ func _fire_control(delta: float, dist: float) -> void:
 		# Mortars loft: aim above the target so the slow shell arcs in.
 		aim_point += Vector3.UP * dist * 0.18
 	aim_point += Vector3(randf_range(-error, error), randf_range(-error * 0.5, error * 0.5), randf_range(-error, error))
-	if weapon.try_fire(aim_dir_at(aim_point)):
+	var shot_dir := aim_dir_at(aim_point)
+	if weapon.try_fire(shot_dir):
 		_burst_left -= 1
 		if _burst_left <= 0:
 			_burst_pause = float(cfg.pause) * randf_range(0.8, 1.25)
+		if has_meta("net_bot_id"):
+			Net.broadcast_bot_shot(int(get_meta("net_bot_id")),
+				weapon.muzzle.global_position, shot_dir, weapon.data.resource_path)
 
 func _move_along_path(delta: float, speed: float) -> void:
 	if _nav.is_navigation_finished():

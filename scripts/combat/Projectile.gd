@@ -9,6 +9,9 @@ var shooter: Node3D
 var faction: FactionData
 var life: float = 3.0
 var damage_scale: float = 1.0
+## Replay of a remote peer's shot: flies and sparks, but the damage for it
+## already travelled over the wire from the shooter's own machine.
+var cosmetic: bool = false
 var _exclude: Array[RID] = []
 
 static func spawn(from: Node3D, origin: Vector3, direction: Vector3, weapon_data: WeaponData, shooter_unit: Node3D, shooter_faction: FactionData, damage_mult: float = 1.0) -> void:
@@ -17,6 +20,18 @@ static func spawn(from: Node3D, origin: Vector3, direction: Vector3, weapon_data
 	p.shooter = shooter_unit
 	p.faction = shooter_faction
 	p.damage_scale = damage_mult
+	p.velocity = direction.normalized() * weapon_data.projectile_speed
+	from.get_tree().current_scene.add_child(p)
+	p.global_position = origin
+	p.look_at(origin + direction, Vector3.UP if absf(direction.dot(Vector3.UP)) < 0.99 else Vector3.RIGHT)
+	p._build_visual()
+
+static func spawn_cosmetic(from: Node3D, origin: Vector3, direction: Vector3, weapon_data: WeaponData, shooter_unit: Node3D, shooter_faction: FactionData) -> void:
+	var p := Projectile.new()
+	p.data = weapon_data
+	p.shooter = shooter_unit
+	p.faction = shooter_faction
+	p.cosmetic = true
 	p.velocity = direction.normalized() * weapon_data.projectile_speed
 	from.get_tree().current_scene.add_child(p)
 	p.global_position = origin
@@ -110,6 +125,8 @@ func _explode(point: Vector3) -> void:
 		Fx.ordnance_explosion(self, point, data.explosive_radius)
 	else:
 		Fx.explosion(self, point, data.explosive_radius)
+	if cosmetic:
+		return
 	var params := PhysicsShapeQueryParameters3D.new()
 	var sphere := SphereShape3D.new()
 	sphere.radius = data.explosive_radius
@@ -128,7 +145,7 @@ func _explode(point: Vector3) -> void:
 				body.velocity += away.normalized() * 10.0 * falloff + Vector3.UP * 7.0 * falloff
 
 func _apply_damage(target: Object, amount: float) -> void:
-	if target == null or not target.has_method("take_damage"):
+	if cosmetic or target == null or not target.has_method("take_damage"):
 		return
 	# No friendly fire between toys of the same army.
 	if faction != null and "faction" in target and target.faction != null and not faction.hostile_to(target.faction):

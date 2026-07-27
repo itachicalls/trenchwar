@@ -75,6 +75,9 @@ func _unit_ready() -> void:
 	move_speed = move_speed * (1.0 + 0.08 * Game.upgrades.get("speed", 0))
 	health.setup(base_health)
 	health.changed.connect(func(c, m): Events.player_health_changed.emit(c, m))
+	if Net.is_online:
+		Net.reset_health_sync()
+		health.changed.connect(func(c, m): Net.broadcast_health(c, m))
 	weapon.ammo_updated.connect(func(a, m): Events.ammo_changed.emit(a, m))
 
 	_cam_pivot = Node3D.new()
@@ -99,6 +102,10 @@ func _unit_ready() -> void:
 	Events.player_spawned.emit(self)
 	Events.fuel_changed.emit(fuel, FUEL_MAX)
 	Events.player_health_changed.emit(health.current, health.max_health)
+	if Net.is_online:
+		# Fresh spawn: publish full HP now so enemy bars don't show the puppet's
+		# placeholder value until the first time we get shot.
+		Net.broadcast_health(health.current, health.max_health, true)
 	Events.ammo_changed.emit(weapon.ammo, weapon.data.magazine_size)
 	Events.weapon_changed.emit(weapon.data.display_name)
 
@@ -623,7 +630,8 @@ func _update_combat() -> void:
 	var auto := Game.is_touch() and Game.auto_fire_enabled and _aiming and aim_at_enemy
 	var want_fire := Input.is_action_pressed("fire") or auto
 	if want_fire if (weapon.data.automatic or auto) else Input.is_action_just_pressed("fire"):
-		if weapon.try_fire(_aim_direction()):
+		var shot_dir := _aim_direction()
+		if weapon.try_fire(shot_dir):
 			# Snap the body square to the shot the instant it fires — no
 			# lerp lag frame where the soldier fires across his shoulder.
 			# Pure vertical aims have no horizontal component; face camera yaw.
@@ -633,6 +641,9 @@ func _update_combat() -> void:
 				face = -Basis(Vector3.UP, _yaw).z
 			face_direction(face, 1.0, 999.0)
 			_shake = minf(_shake + 0.35 * weapon.data.recoil, 2.0)
+			if Net.is_online:
+				Net.broadcast_shot(weapon.muzzle.global_position, shot_dir,
+					weapon.data.resource_path)
 	if Input.is_action_just_pressed("reload"):
 		weapon.reload()
 
@@ -723,6 +734,22 @@ func take_damage(amount: float, attacker: Node = null) -> void:
 	Sfx.play("hurt", -6.0)
 	_shake = minf(_shake + 0.5, 2.0)
 
+## Damage reported by another player's client. We own this body, so we decide
+## how much actually stuck (shields, already dead) and tell the shooter — that
+## reply is what draws their hitmarker, and it settles who gets the kill.
+var last_attacker_peer: int = 0
+
+func take_net_damage(amount: float, attacker_peer: int) -> void:
+	if _dying or health.dead:
+		return
+	var before := health.current
+	take_damage(amount, null)
+	var dealt := before - health.current
+	if dealt > 0.0 and attacker_peer > 0:
+		last_attacker_peer = attacker_peer
+	Net.confirm_hit(attacker_peer, dealt, health.dead)
+	Net.broadcast_health(health.current, health.max_health, true)
+
 ## Mission won: down weapon, spin to face the camera, and wave at the player.
 ## Runs during Main's victory breather before the menu appears.
 var _celebrating := false
@@ -755,7 +782,15 @@ func _on_died(_attacker: Node) -> void:
 	collision_layer = 0
 	velocity = Vector3.ZERO
 	Sfx.play("death")
-	Engine.time_scale = 0.35
+	# The kill is called the instant it happens online: the opponent stops
+	# shooting a corpse and the scoreboard can't drift by a full second.
+	# Slow-mo also stays off — warping local time during a wagered match
+	# would make the other player's soldier appear to teleport.
+	if Net.is_online:
+		Net.announce_down(last_attacker_peer)
+		Net.broadcast_health(0.0, health.max_health, true)
+	else:
+		Engine.time_scale = 0.35
 	if _anim != null and _anim.has_animation("Death"):
 		play_anim("Death", 0.1)
 	elif body_rig != null:
@@ -764,11 +799,9 @@ func _on_died(_attacker: Node) -> void:
 		tip.tween_property(body_rig, "rotation:z", PI / 2.0, 0.5) \
 			.set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 	# Real-time timer (ignores the slow-mo) ends the moment.
-	get_tree().create_timer(1.1, true, false, true).timeout.connect(func():
+	get_tree().create_timer(1.1 if not Net.is_online else 0.7, true, false, true).timeout.connect(func():
 		Engine.time_scale = 1.0
 		Fx.plastic_shatter(self, global_position + Vector3.UP * 0.7, faction.primary_color)
-		if Net.is_online:
-			Net.announce_down()
 		Events.unit_died.emit(self)
 		Events.player_died.emit()
 		queue_free())

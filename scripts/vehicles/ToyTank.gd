@@ -315,6 +315,8 @@ func _drive(delta: float) -> void:
 		if cannon.try_fire(dir):
 			velocity -= dir * 3.5   # recoil shove
 			_fire_feedback(dir)
+			if Net.is_online:
+				Net.broadcast_shot(cannon.muzzle.global_position, dir, cannon.data.resource_path)
 	if cannon.ammo != _last_ammo:
 		_last_ammo = cannon.ammo
 		Events.ammo_changed.emit(cannon.ammo, cannon.data.magazine_size)

@@ -186,7 +186,8 @@ func _fly(delta: float) -> void:
 		Sfx.play_at("hit", global_position)
 
 	if Input.is_action_pressed("fire"):
-		guns.try_fire(forward)
+		if guns.try_fire(forward) and Net.is_online:
+			Net.broadcast_shot(guns.muzzle.global_position, forward, guns.data.resource_path)
 	if guns.ammo != _last_ammo:
 		_last_ammo = guns.ammo
 		Events.ammo_changed.emit(guns.ammo, guns.data.magazine_size)
