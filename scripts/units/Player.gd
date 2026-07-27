@@ -798,8 +798,12 @@ func _on_died(_attacker: Node) -> void:
 		var tip := create_tween()
 		tip.tween_property(body_rig, "rotation:z", PI / 2.0, 0.5) \
 			.set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
-	# Real-time timer (ignores the slow-mo) ends the moment.
-	get_tree().create_timer(1.1 if not Net.is_online else 0.7, true, false, true).timeout.connect(func():
+	# Offline the timer has to outrun the slow-mo (hence ignore_time_scale).
+	# Online there is no slow-mo, and it must honour a match timeout instead of
+	# respawning someone while both players are frozen.
+	var death_timer := get_tree().create_timer(0.7, false) if Net.is_online \
+		else get_tree().create_timer(1.1, true, false, true)
+	death_timer.timeout.connect(func():
 		Engine.time_scale = 1.0
 		Fx.plastic_shatter(self, global_position + Vector3.UP * 0.7, faction.primary_color)
 		Events.unit_died.emit(self)

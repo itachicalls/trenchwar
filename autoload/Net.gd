@@ -15,6 +15,11 @@ signal peer_shot(peer_id: int, origin: Vector3, dir: Vector3, weapon_path: Strin
 signal peer_health(peer_id: int, hp: float, max_hp: float)
 signal hit_landed(victim_id: int, amount: float, killed: bool)
 signal kill_feed(killer_id: int, victim_id: int)
+signal pause_vote_opened(requester_id: int, seconds: float)
+signal pause_vote_closed(accepted: bool, reason: String)
+signal pause_started(requester_id: int, seconds: float)
+signal pause_ended(reason: String)
+signal pause_refused(reason: String)
 signal race_won(peer_id: int)
 signal bot_spawned(bot_id: int, team: String, pos: Vector3, variant: String)
 signal bot_pose(bot_id: int, pos: Vector3, yaw: float, hp_ratio: float)
@@ -22,6 +27,7 @@ signal bot_shot(bot_id: int, origin: Vector3, dir: Vector3, weapon_path: String)
 signal bot_hurt(bot_id: int, amount: float)
 signal bot_died(bot_id: int)
 signal match_ended(winner_is_green: bool, win_title: String, lose_reason: String)
+signal match_abandoned
 signal squad_match_ended(winner_squad: String, win_title: String)
 signal score_synced(green_score: int, chrome_score: int)
 signal hold_synced(hold_amount: float, wave: int, time_left: float)
@@ -57,6 +63,9 @@ var stake_sol: float = 0.0
 var local_wallet: String = ""
 
 func _ready() -> void:
+	# The whole point of a synchronised timeout is that the tree freezes; this
+	# node has to keep running to count it down and to hear the resume.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_ok)
@@ -135,6 +144,7 @@ func reset() -> void:
 	pending_mode = ""
 	match_active = false
 	_wanted_room_code = ""
+	_clear_pause_state(true)
 	lobby_changed.emit()
 	peer_list_changed.emit()
 
@@ -390,10 +400,12 @@ func _rpc_start_match(mode_id: String) -> void:
 	selected_mode = mode_id
 	match_active = true
 	status_text = "Starting %s…" % mode_id
+	_clear_pause_state(false)
 	match_starting.emit(mode_id)
 
 func notify_match_over() -> void:
 	match_active = false
+	_clear_pause_state(true)
 	if multiplayer.is_server():
 		# Fresh code next session so late joiners don't slam into an ending fight.
 		room_code = _generate_room_code()
@@ -525,6 +537,22 @@ func _on_peer_disconnected(id: int) -> void:
 	print("[Net] peer disconnected: ", id)
 	peers.erase(id)
 	if multiplayer.is_server():
+		# Don't leave the survivors frozen because the player who called the
+		# timeout (or the one still being asked) walked away.
+		if pause_active:
+			_end_pause("PLAYER LEFT")
+		elif pause_vote_open:
+			if id == pause_vote_requester:
+				_close_pause_vote(false, "REQUEST WITHDRAWN")
+			else:
+				_reevaluate_pause_vote()
+		# An empty match never ends by itself: nobody is left to score a win,
+		# so without this the room stays "in progress" forever and the next
+		# pair of players can never start one.
+		if match_active and _human_ids().is_empty():
+			print("[Net] all players left mid-match — releasing the room")
+			notify_match_over()
+			match_abandoned.emit()
 		_sync_lobby.rpc(peers, selected_mode, room_code, stake_sol)
 	peer_list_changed.emit()
 
@@ -599,14 +627,14 @@ func _rpc_pose(pos: Vector3, yaw: float, vel: Vector3) -> void:
 ## Every human shot is replayed on the other clients as a cosmetic tracer from
 ## that peer's puppet, so a firefight looks identical on both screens.
 func broadcast_shot(origin: Vector3, dir: Vector3, weapon_path: String) -> void:
-	if not is_online or is_dedicated:
+	if not is_online or is_dedicated or pause_active:
 		return
 	_rpc_shot.rpc(origin, dir, weapon_path)
 
 @rpc("any_peer", "unreliable", "call_remote")
 func _rpc_shot(origin: Vector3, dir: Vector3, weapon_path: String) -> void:
 	var id := multiplayer.get_remote_sender_id()
-	if id == 0:
+	if id == 0 or pause_active:
 		return
 	peer_shot.emit(id, origin, dir, weapon_path)
 
@@ -635,12 +663,16 @@ func _rpc_health(hp: float, max_hp: float) -> void:
 	peer_health.emit(id, maxf(hp, 0.0), maxf(max_hp, 1.0))
 
 func report_hit(victim_peer_id: int, amount: float) -> void:
-	if not is_online or amount <= 0.0:
+	if not is_online or amount <= 0.0 or pause_active:
 		return
 	_rpc_hit.rpc(victim_peer_id, clampf(amount, 0.0, 400.0))
 
 @rpc("any_peer", "reliable", "call_local")
 func _rpc_hit(victim_id: int, amount: float) -> void:
+	# A bullet that was already in the air when the freeze began must not land
+	# on someone who can't dodge it.
+	if pause_active:
+		return
 	var attacker := multiplayer.get_remote_sender_id()
 	if attacker == 0:
 		attacker = my_id()
@@ -707,6 +739,249 @@ func _rpc_race_win(id: int) -> void:
 	race_won.emit(id)
 	notify_match_over()
 
+## ---- match timeout (synchronised pause) -----------------------------------
+##
+## A local pause during a wagered match is an exploit: one player freezes while
+## the other keeps shooting. So ESC in an online match asks for a timeout
+## instead of taking one. The match keeps running while the request is out —
+## otherwise asking would itself be a free pause — and every other human has to
+## agree before anyone freezes. The server owns the clock, starts and ends the
+## freeze for everyone at once, and caps how long and how often it can happen.
+
+const PAUSE_VOTE_SECONDS := 12.0
+const PAUSE_MAX_SECONDS := 90.0
+const PAUSE_ALLOWANCE := 1      # timeouts each player gets per match
+const PAUSE_COOLDOWN := 25.0    # after a refused vote, before asking again
+
+var pause_active: bool = false
+var pause_requester: int = 0
+var pause_seconds_left: float = 0.0
+var pause_vote_open: bool = false
+var pause_vote_seconds_left: float = 0.0
+var pause_vote_requester: int = 0
+
+var _pause_votes: Dictionary = {}
+var _pause_used: Dictionary = {}
+var _pause_block_until: float = 0.0
+var _pause_resync: float = 0.0
+
+func _process(delta: float) -> void:
+	if not is_online:
+		return
+	# Everyone counts down locally so the on-screen clock is smooth; the server
+	# is what actually decides when a phase is over.
+	if pause_vote_open:
+		pause_vote_seconds_left = maxf(pause_vote_seconds_left - delta, 0.0)
+	elif pause_active:
+		pause_seconds_left = maxf(pause_seconds_left - delta, 0.0)
+	if not multiplayer.is_server():
+		return
+	if pause_vote_open:
+		if pause_vote_seconds_left <= 0.0:
+			_close_pause_vote(false, "NO ANSWER")
+	elif pause_active:
+		_pause_resync += delta
+		if _pause_resync >= 2.0:
+			_pause_resync = 0.0
+			_rpc_pause_sync.rpc(pause_seconds_left)
+		if pause_seconds_left <= 0.0:
+			_end_pause("TIME UP")
+
+func pause_allowance_left(peer_id: int = 0) -> int:
+	var id := peer_id if peer_id > 0 else my_id()
+	return maxi(PAUSE_ALLOWANCE - int(_pause_used.get(id, 0)), 0)
+
+func _human_ids() -> Array:
+	var out: Array = []
+	for id in peers.keys():
+		var pid := int(id)
+		if pid > 0 and not (is_dedicated and pid == 1):
+			out.append(pid)
+	return out
+
+func request_pause() -> void:
+	if not is_online or is_dedicated or not match_active:
+		return
+	if pause_active or pause_vote_open:
+		return
+	if multiplayer.is_server():
+		_open_pause_vote(my_id())
+	else:
+		rpc_id(1, "_rpc_request_pause")
+
+@rpc("any_peer", "reliable")
+func _rpc_request_pause() -> void:
+	if not multiplayer.is_server():
+		return
+	_open_pause_vote(multiplayer.get_remote_sender_id())
+
+func _open_pause_vote(requester_id: int) -> void:
+	if not multiplayer.is_server() or not match_active:
+		return
+	if pause_active or pause_vote_open:
+		return
+	if requester_id <= 0 or not peers.has(requester_id):
+		return
+	var now := float(Time.get_ticks_msec()) * 0.001
+	if now < _pause_block_until:
+		_rpc_pause_refused.rpc_id(requester_id, "TIMEOUT ON COOLDOWN")
+		return
+	if int(_pause_used.get(requester_id, 0)) >= PAUSE_ALLOWANCE:
+		_rpc_pause_refused.rpc_id(requester_id, "NO TIMEOUTS LEFT")
+		return
+	var others := _human_ids()
+	others.erase(requester_id)
+	if others.is_empty():
+		# Nobody else to ask — a solo player in an online room isn't cheating
+		# anyone by stopping the clock.
+		_start_pause(requester_id)
+		return
+	_pause_votes = {requester_id: true}
+	pause_vote_open = true
+	pause_vote_requester = requester_id
+	pause_vote_seconds_left = PAUSE_VOTE_SECONDS
+	_rpc_pause_vote.rpc(requester_id, PAUSE_VOTE_SECONDS)
+
+@rpc("authority", "reliable", "call_local")
+func _rpc_pause_vote(requester_id: int, seconds: float) -> void:
+	pause_vote_open = true
+	pause_vote_requester = requester_id
+	pause_vote_seconds_left = seconds
+	pause_vote_opened.emit(requester_id, seconds)
+
+func answer_pause(accept: bool) -> void:
+	if not is_online or is_dedicated or not pause_vote_open:
+		return
+	if multiplayer.is_server():
+		_record_pause_vote(my_id(), accept)
+	else:
+		rpc_id(1, "_rpc_pause_answer", accept)
+
+@rpc("any_peer", "reliable")
+func _rpc_pause_answer(accept: bool) -> void:
+	if not multiplayer.is_server():
+		return
+	_record_pause_vote(multiplayer.get_remote_sender_id(), accept)
+
+func _record_pause_vote(voter_id: int, accept: bool) -> void:
+	if not multiplayer.is_server() or not pause_vote_open:
+		return
+	if voter_id <= 0 or not peers.has(voter_id):
+		return
+	_pause_votes[voter_id] = accept
+	if not accept:
+		_close_pause_vote(false, "%s SAID NO" % name_for_peer(voter_id).to_upper())
+		return
+	_reevaluate_pause_vote()
+
+## A vote passes once every human still in the match has said yes — which also
+## has to be rechecked when someone leaves, or their missing vote would hang
+## the prompt on everyone else's screen until it timed out.
+func _reevaluate_pause_vote() -> void:
+	if not multiplayer.is_server() or not pause_vote_open:
+		return
+	var humans := _human_ids()
+	if humans.is_empty():
+		_close_pause_vote(false, "REQUEST WITHDRAWN")
+		return
+	for id in humans:
+		if not bool(_pause_votes.get(id, false)):
+			return
+	_close_pause_vote(true, "")
+
+func _close_pause_vote(accepted: bool, reason: String) -> void:
+	if not multiplayer.is_server():
+		return
+	var requester := pause_vote_requester
+	pause_vote_open = false
+	_pause_votes.clear()
+	_rpc_pause_vote_result.rpc(accepted, reason)
+	if accepted:
+		_start_pause(requester)
+	else:
+		# Losing a vote costs a cooldown, so a stalling player can't spam the
+		# other side with prompts mid-firefight.
+		_pause_block_until = float(Time.get_ticks_msec()) * 0.001 + PAUSE_COOLDOWN
+
+@rpc("authority", "reliable", "call_local")
+func _rpc_pause_vote_result(accepted: bool, reason: String) -> void:
+	pause_vote_open = false
+	pause_vote_seconds_left = 0.0
+	pause_vote_requester = 0
+	pause_vote_closed.emit(accepted, reason)
+
+func _start_pause(requester_id: int) -> void:
+	if not multiplayer.is_server() or pause_active:
+		return
+	_pause_resync = 0.0
+	_rpc_pause_start.rpc(requester_id, PAUSE_MAX_SECONDS)
+
+@rpc("authority", "reliable", "call_local")
+func _rpc_pause_start(requester_id: int, seconds: float) -> void:
+	# Counted here rather than server-side so every client knows how many
+	# timeouts each player has burned and the UI can say so before asking.
+	_pause_used[requester_id] = int(_pause_used.get(requester_id, 0)) + 1
+	pause_active = true
+	pause_requester = requester_id
+	pause_seconds_left = seconds
+	pause_started.emit(requester_id, seconds)
+
+## Anyone can call time back on — nobody gets held hostage by the player who
+## asked for the break.
+func resume_pause() -> void:
+	if not is_online or not pause_active:
+		return
+	if multiplayer.is_server():
+		_end_pause("RESUMED")
+	else:
+		rpc_id(1, "_rpc_request_resume")
+
+@rpc("any_peer", "reliable")
+func _rpc_request_resume() -> void:
+	if not multiplayer.is_server():
+		return
+	var id := multiplayer.get_remote_sender_id()
+	if id <= 0 or not peers.has(id):
+		return
+	_end_pause("RESUMED")
+
+func _end_pause(reason: String) -> void:
+	if not multiplayer.is_server() or not pause_active:
+		return
+	_rpc_pause_end.rpc(reason)
+
+@rpc("authority", "reliable", "call_local")
+func _rpc_pause_end(reason: String) -> void:
+	pause_active = false
+	pause_requester = 0
+	pause_seconds_left = 0.0
+	pause_ended.emit(reason)
+
+@rpc("authority", "unreliable", "call_remote")
+func _rpc_pause_sync(seconds_left: float) -> void:
+	if pause_active:
+		pause_seconds_left = maxf(seconds_left, 0.0)
+
+@rpc("authority", "reliable")
+func _rpc_pause_refused(reason: String) -> void:
+	pause_refused.emit(reason)
+
+## Wipe every trace of a timeout: used when a match ends, when the room resets,
+## and when the player who asked for one drops mid-break.
+func _clear_pause_state(announce: bool) -> void:
+	_pause_votes.clear()
+	_pause_used.clear()
+	_pause_block_until = 0.0
+	pause_vote_open = false
+	pause_vote_requester = 0
+	pause_vote_seconds_left = 0.0
+	if pause_active:
+		pause_active = false
+		pause_requester = 0
+		pause_seconds_left = 0.0
+		if announce:
+			pause_ended.emit("MATCH OVER")
+
 ## ---- bot authority sync ---------------------------------------------------
 
 func spawn_bot_net(bot_id: int, team: String, pos: Vector3, variant: String) -> void:
@@ -730,7 +1005,7 @@ func _rpc_bot_pose(bot_id: int, pos: Vector3, yaw: float, hp_ratio: float = 1.0)
 ## Bots only truly exist on the authority, so their shots have to be relayed
 ## or clients watch NPCs kill them with invisible bullets.
 func broadcast_bot_shot(bot_id: int, origin: Vector3, dir: Vector3, weapon_path: String) -> void:
-	if not is_online or not multiplayer.is_server():
+	if not is_online or not multiplayer.is_server() or pause_active:
 		return
 	_rpc_bot_shot.rpc(bot_id, origin, dir, weapon_path)
 
@@ -739,7 +1014,7 @@ func _rpc_bot_shot(bot_id: int, origin: Vector3, dir: Vector3, weapon_path: Stri
 	bot_shot.emit(bot_id, origin, dir, weapon_path)
 
 func report_bot_hit(bot_id: int, amount: float) -> void:
-	if not is_online or amount <= 0.0:
+	if not is_online or amount <= 0.0 or pause_active:
 		return
 	amount = clampf(amount, 0.0, 400.0)
 	# Only authority applies damage to the live bot; clients get FX via pose/death.
@@ -750,7 +1025,7 @@ func report_bot_hit(bot_id: int, amount: float) -> void:
 
 @rpc("any_peer", "reliable")
 func _rpc_bot_hit(bot_id: int, amount: float) -> void:
-	if not multiplayer.is_server():
+	if not multiplayer.is_server() or pause_active:
 		return
 	bot_hurt.emit(bot_id, clampf(amount, 0.0, 400.0))
 

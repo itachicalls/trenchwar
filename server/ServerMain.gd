@@ -29,8 +29,13 @@ func _ready() -> void:
 	print("[Trenchwar Server] Public clients need wss:// via Caddy/Fly (see server/README.md).")
 	Net.match_starting.connect(_on_match_starting)
 	Net.match_ended.connect(_on_match_ended)
+	# The authority simulates the bots, so it has to freeze with the players or
+	# the arena would keep fighting through a timeout.
+	Net.pause_started.connect(func(_id: int, _secs: float): get_tree().paused = true)
+	Net.pause_ended.connect(func(_reason: String): get_tree().paused = false)
 	Net.squad_match_ended.connect(_on_squad_ended)
 	Net.race_won.connect(_on_race_ended)
+	Net.match_abandoned.connect(_on_match_abandoned)
 	Events.mission_completed.connect(_on_mission_done)
 	Events.mission_failed.connect(_on_mission_done)
 
@@ -55,6 +60,9 @@ func _on_squad_ended(winner_squad: String, _win_title: String) -> void:
 
 func _on_race_ended(peer_id: int) -> void:
 	await _return_to_lobby("race peer %d" % peer_id)
+
+func _on_match_abandoned() -> void:
+	await _return_to_lobby("all players left")
 
 func _return_to_lobby(reason: String) -> void:
 	print("[Trenchwar Server] match ended (%s) — lobby code: %s" % [reason, Net.room_code])

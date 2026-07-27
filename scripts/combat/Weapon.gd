@@ -111,7 +111,9 @@ func reload() -> void:
 		return
 	_reloading = true
 	Sfx.play_at("reload", global_position, -8.0)
-	get_tree().create_timer(data.reload_time * reload_mult).timeout.connect(func():
+	# process_always = false: a reload must not tick down through a match
+	# timeout, or calling one would be a free magazine.
+	get_tree().create_timer(data.reload_time * reload_mult, false).timeout.connect(func():
 		if not is_instance_valid(self):
 			return
 		_reloading = false

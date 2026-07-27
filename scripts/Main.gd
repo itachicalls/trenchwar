@@ -166,6 +166,11 @@ func _ready() -> void:
 	Net.match_starting.connect(_on_net_match_starting)
 	Net.connection_failed.connect(func(reason: String): Events.notify.emit(reason))
 	Net.lobby_changed.connect(_on_net_lobby_changed)
+	Net.pause_vote_opened.connect(_on_pause_vote_opened)
+	Net.pause_vote_closed.connect(_on_pause_vote_closed)
+	Net.pause_started.connect(_on_pause_started)
+	Net.pause_ended.connect(_on_pause_ended)
+	Net.pause_refused.connect(func(reason: String): Events.notify.emit(reason))
 	SolBridge.wallet_changed.connect(func(pk: String):
 		Net.set_wallet(pk)
 		_on_net_lobby_changed())
@@ -236,8 +241,25 @@ func _ready() -> void:
 				get_tree().quit())
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Y / N answer a pending timeout request without leaving the fight — the
+	# match is still live while the vote is out, so we must not open a menu
+	# or drop pointer lock here.
+	if Net.pause_vote_open and Net.pause_vote_requester != Net.my_id() and event is InputEventKey \
+			and event.pressed and not event.echo:
+		var key := (event as InputEventKey).keycode
+		if key == KEY_Y:
+			Net.answer_pause(true)
+			get_viewport().set_input_as_handled()
+			return
+		if key == KEY_N:
+			Net.answer_pause(false)
+			get_viewport().set_input_as_handled()
+			return
 	if event.is_action_pressed("pause") and Game.state == Game.State.PLAYING:
-		_toggle_pause()
+		if Net.is_online and Net.match_active:
+			_request_net_pause()
+		else:
+			_toggle_pause()
 
 ## Web: leaving pointer lock (browser ESC) should pause, not leave the player
 ## staring at an unresponsive game.
@@ -251,7 +273,13 @@ func _check_web_pointer_lock() -> void:
 		_web_had_capture = true
 	elif _web_had_capture:
 		_web_had_capture = false
-		_toggle_pause()
+		# Online the match doesn't stop for one browser losing pointer lock —
+		# freezing here would only blind this player while the fight goes on.
+		# A click takes the mouse back (Player._input).
+		if Net.is_online and Net.match_active:
+			Events.notify.emit("CLICK TO TAKE AIM AGAIN  ·  ESC ASKS FOR A TIMEOUT")
+		else:
+			_toggle_pause()
 
 func _fade(to_alpha: float, duration: float = 0.35) -> void:
 	var t := create_tween()
@@ -663,6 +691,7 @@ func _ensure_diorama() -> void:
 
 func _process(delta: float) -> void:
 	_check_web_pointer_lock()
+	_update_pause_ui()
 	if diorama != null and is_instance_valid(diorama):
 		var pivot := diorama.get_node_or_null("CamPivot")
 		if pivot != null:
@@ -765,6 +794,156 @@ func _show_pause_menu() -> void:
 		Game.save_progress()
 		_end_mission()
 		_show_main_menu())
+
+# ------------------------------------------------------------- ONLINE TIMEOUT
+#
+# Online there is one match, not two. Nobody freezes their own copy of it: a
+# player asks for a timeout, the others agree, and then every screen stops and
+# restarts on the same server clock.
+
+var _vote_layer: CanvasLayer = null
+var _vote_clock: Label = null
+var _pause_clock: Label = null
+
+func _request_net_pause() -> void:
+	if Net.pause_active or Net.pause_vote_open:
+		return
+	if Net.pause_allowance_left() <= 0:
+		Events.notify.emit("NO TIMEOUTS LEFT THIS MATCH")
+		return
+	Net.request_pause()
+
+func _clear_vote_overlay() -> void:
+	_vote_clock = null
+	if _vote_layer != null and is_instance_valid(_vote_layer):
+		_vote_layer.queue_free()
+	_vote_layer = null
+
+## Deliberately not a menu: the match is still live while the vote is out, so
+## this must not dim the screen, steal the pointer or block the crosshair.
+func _on_pause_vote_opened(requester_id: int, _seconds: float) -> void:
+	_clear_vote_overlay()
+	if Game.state != Game.State.PLAYING:
+		return
+	var mine := requester_id == Net.my_id()
+	_vote_layer = CanvasLayer.new()
+	_vote_layer.layer = 12
+	add_child(_vote_layer)
+	var root := VBoxContainer.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.theme = UiTheme.build()
+	root.alignment = BoxContainer.ALIGNMENT_BEGIN
+	root.add_theme_constant_override("separation", 4)
+	_vote_layer.add_child(root)
+	var pad := Control.new()
+	pad.custom_minimum_size = Vector2(0, 54)
+	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(pad)
+	var head := "TIMEOUT REQUESTED" if mine else \
+		"%s WANTS A TIMEOUT" % Net.name_for_peer(requester_id).to_upper()
+	_vote_banner(root, head, 26, UiTheme.AMBER)
+	_vote_clock = _vote_banner(root, "%d" % ceili(Net.pause_vote_seconds_left), 40, UiTheme.CREAM)
+	if mine:
+		_vote_banner(root, "WAITING FOR THE OTHER PLAYER TO AGREE", 16, Color(0.8, 0.84, 0.75))
+		return
+	var stake := "FREE PLAY" if Net.stake_sol <= 0.0 else ("%s SOL ON THE LINE" % str(Net.stake_sol))
+	_vote_banner(root, "THE MATCH KEEPS RUNNING UNTIL YOU ANSWER  ·  %s" % stake, 15,
+		Color(0.85, 0.7, 0.4))
+	if Game.is_touch():
+		var row := HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.add_theme_constant_override("separation", 18)
+		root.add_child(row)
+		row.add_child(_vote_button("ALLOW", UiTheme.GREEN, true))
+		row.add_child(_vote_button("DENY", UiTheme.RED, false))
+	else:
+		_vote_banner(root, "[Y] ALLOW        [N] DENY", 20, UiTheme.CYAN)
+
+func _vote_banner(box: VBoxContainer, text: String, size: int, color: Color) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_override("font", UiTheme.body_font())
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", color)
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	l.add_theme_constant_override("outline_size", 6)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(l)
+	return l
+
+func _vote_button(text: String, accent: Color, accept: bool) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size = Vector2(190, 76)
+	b.add_theme_font_size_override("font_size", 26)
+	b.add_theme_color_override("font_color", accent)
+	b.pressed.connect(func():
+		Sfx.play("click", -6.0)
+		Net.answer_pause(accept))
+	return b
+
+func _on_pause_vote_closed(accepted: bool, reason: String) -> void:
+	_clear_vote_overlay()
+	if accepted:
+		return
+	Events.notify.emit("TIMEOUT DENIED — %s" % (reason if reason != "" else "NO ANSWER"))
+
+func _on_pause_started(requester_id: int, _seconds: float) -> void:
+	_clear_vote_overlay()
+	if Game.state != Game.State.PLAYING:
+		return
+	get_tree().paused = true
+	Game.release_mouse()
+	_show_net_pause_menu(requester_id)
+
+func _show_net_pause_menu(requester_id: int) -> void:
+	var box := _menu_base(0.7)
+	_title(box, "MATCH PAUSED", 40 if Game.compact_ui() else 52, UiTheme.CREAM)
+	var who := "YOU CALLED IT" if requester_id == Net.my_id() \
+		else "%s CALLED IT" % Net.name_for_peer(requester_id).to_upper()
+	_subtitle(box, who, 16, Color(0.8, 0.84, 0.75))
+	_subtitle(box, "Both players are frozen on the same clock.", 15, Color(0.7, 0.75, 0.65))
+	_spacer(box, 8)
+	_pause_clock = _title(box, _pause_clock_text(), 46, UiTheme.AMBER)
+	_subtitle(box, "The match restarts on its own when this runs out.", 14, Color(0.7, 0.75, 0.65))
+	_spacer(box, 14)
+	if Net.stake_sol > 0.0:
+		_subtitle(box, "STAKE  %s SOL  ·  leaving now forfeits the pot" % str(Net.stake_sol),
+			15, Color(0.95, 0.8, 0.3))
+		_spacer(box, 8)
+	# Anyone can call time back on, so no one can be held hostage by the
+	# player who asked for the break.
+	_button(box, "RESUME FOR BOTH", func():
+		Game.capture_mouse()   # inside the click gesture (web pointer lock)
+		Net.resume_pause(), UiTheme.GREEN)
+	_button(box, "LEAVE MATCH", func():
+		get_tree().paused = false
+		Net.reset()
+		Game.save_progress()
+		_end_mission()
+		_show_main_menu(), UiTheme.RED)
+
+func _pause_clock_text() -> String:
+	var s := maxi(ceili(Net.pause_seconds_left), 0)
+	return "%d:%02d" % [s / 60, s % 60]
+
+func _on_pause_ended(reason: String) -> void:
+	_clear_vote_overlay()
+	_pause_clock = null
+	if not Net.is_dedicated and get_tree().paused and Game.state == Game.State.PLAYING:
+		get_tree().paused = false
+		_clear_menu()
+		Game.capture_mouse()
+	if reason != "" and reason != "MATCH OVER":
+		Events.notify.emit("MATCH RESUMED  ·  %s" % reason)
+
+func _update_pause_ui() -> void:
+	if _vote_clock != null and is_instance_valid(_vote_clock):
+		_vote_clock.text = "%d" % maxi(ceili(Net.pause_vote_seconds_left), 0)
+	if _pause_clock != null and is_instance_valid(_pause_clock):
+		_pause_clock.text = _pause_clock_text()
 
 # ---------------------------------------------------------------- GAME MODES
 
