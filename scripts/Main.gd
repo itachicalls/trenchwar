@@ -166,6 +166,11 @@ func _ready() -> void:
 	Net.match_starting.connect(_on_net_match_starting)
 	Net.connection_failed.connect(func(reason: String): Events.notify.emit(reason))
 	Net.lobby_changed.connect(_on_net_lobby_changed)
+	SolBridge.wallet_changed.connect(func(pk: String):
+		Net.set_wallet(pk)
+		_on_net_lobby_changed())
+	Wager.wager_updated.connect(_on_net_lobby_changed)
+	Wager.wager_error.connect(func(m: String): Events.notify.emit(m))
 	# CI/headless smoke test: boot straight into the mission, run, then quit.
 	if "--menushot" in args:
 		get_tree().create_timer(1.5).timeout.connect(func():
@@ -847,6 +852,44 @@ func _show_online_lobby() -> void:
 		_subtitle(box, "ROOM CODE  %s" % Net.room_code, 18, UiTheme.CYAN)
 		_subtitle(box, "Share this code with friends worldwide.", 12, Color(0.7, 0.75, 0.65))
 		_spacer(box, 6)
+		# ---- Solana stake (web/mobile) ----
+		_subtitle(box, "SOL STAKE  (1v1 pot — winner takes both)", 12, Color(0.85, 0.75, 0.35))
+		if OS.has_feature("web"):
+			var wlabel := "CONNECT PHANTOM" if SolBridge.pubkey == "" else ("WALLET  %s" % SolBridge.short_key())
+			_button(box, wlabel, func():
+				if SolBridge.pubkey == "":
+					SolBridge.connect_wallet()
+				else:
+					SolBridge.disconnect_wallet()
+					Net.set_wallet("")
+				_show_online_lobby(), UiTheme.AMBER)
+		else:
+			_subtitle(box, "Open the web build to stake SOL (Phantom).", 12, Color(0.6, 0.65, 0.6))
+		if Net.is_lobby_leader() or Net.is_host:
+			for s in Wager.STAKE_OPTIONS:
+				var lab := "NO STAKE" if s <= 0.0 else ("STAKE  %s SOL" % str(s))
+				if is_equal_approx(Net.stake_sol, s):
+					lab += "  ✓"
+				var amt: float = float(s)
+				_button(box, lab, func():
+					Net.set_stake(amt)
+					_show_online_lobby())
+		else:
+			_subtitle(box, "STAKE  %s SOL" % str(Net.stake_sol), 14, Color(0.9, 0.8, 0.4))
+		if Net.stake_sol > 0.0 and OS.has_feature("web"):
+			_subtitle(box, "Wager: %s" % Wager.status.to_upper(), 12, Color(0.7, 0.8, 0.7))
+			_button(box, "CREATE ESCROW / JOIN POT", func():
+				Wager.configure(Net.wager_api_url(), Net.solana_cluster())
+				Wager.create_or_join(Net.room_code)
+				_show_online_lobby(), UiTheme.CYAN)
+			if Wager.escrow != "":
+				_button(box, "DEPOSIT %s SOL" % str(Net.stake_sol), func():
+					Wager.deposit_now()
+					_show_online_lobby(), UiTheme.GREEN)
+				_button(box, "REFRESH POT STATUS", func():
+					Wager.refresh_status()
+					_show_online_lobby())
+		_spacer(box, 6)
 		_subtitle(box, "TEAM", 12, Color(0.55, 0.7, 0.85))
 		var teams := [
 			["GREEN ARMY", "green_army", UiTheme.GREEN],
@@ -877,10 +920,14 @@ func _show_online_lobby() -> void:
 		_subtitle(box, "PLAYERS", 12, Color(0.55, 0.7, 0.85))
 		for id in Net.peers.keys():
 			var p: Dictionary = Net.peers[id]
-			var line := "%s  —  %s%s" % [
+			var wshort := str(p.get("wallet", ""))
+			if wshort.length() > 8:
+				wshort = wshort.substr(0, 4) + "…"
+			var line := "%s  —  %s%s%s" % [
 				str(p.get("name", id)),
 				str(p.get("team", "?")).replace("_", " ").to_upper(),
 				"  [READY]" if p.get("ready", false) else "",
+				("  $" + wshort) if wshort != "" else "",
 			]
 			_subtitle(box, line, 13, Color(0.85, 0.85, 0.75))
 		_spacer(box, 8)
@@ -891,12 +938,16 @@ func _show_online_lobby() -> void:
 			Net.set_ready(not ready_now)
 			_show_online_lobby(), UiTheme.AMBER)
 		if Net.is_lobby_leader() or Net.is_host:
-			_button(box, "START MATCH", func():
+			var start_lab := "START MATCH"
+			if Net.stake_sol > 0.0 and not Wager.pot_ready:
+				start_lab = "START (waiting for SOL deposits)"
+			_button(box, start_lab, func():
 				Game.capture_mouse()
 				Net.request_start_match(), UiTheme.GREEN)
 		_spacer(box, 6)
 		_button(box, "LEAVE ROOM", func():
 			Net.reset()
+			Wager.reset_match()
 			_show_online_lobby(), UiTheme.RED)
 	_spacer(box, 10)
 	_button(box, "BACK", _show_modes)

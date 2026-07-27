@@ -22,8 +22,8 @@ signal score_synced(green_score: int, chrome_score: int)
 
 const DEFAULT_PORT := 9080
 const MAX_PLAYERS := 8
-## Public worldwide endpoint (override with env TRENCHWAR_WS_URL).
-const DEFAULT_WSS_URL := "wss://trenchwar-play.fly.dev"
+## Fallback only — live URL comes from web/net_config.json (Cloudflare tunnel).
+const DEFAULT_WSS_URL := ""
 const FACTION_PATHS := {
 	"green_army": "res://data/factions/green_army.tres",
 	"chrome_legion": "res://data/factions/chrome_legion.tres",
@@ -43,6 +43,11 @@ var peers: Dictionary = {}   # peer_id -> {name, team, ready}
 var pending_mode: String = ""
 var match_active: bool = false
 var _wanted_room_code: String = ""
+var _config_wss: String = ""
+var _config_wager_api: String = ""
+var _config_cluster: String = "devnet"
+var stake_sol: float = 0.0
+var local_wallet: String = ""
 
 func _ready() -> void:
 	multiplayer.peer_connected.connect(_on_peer_connected)
@@ -50,12 +55,55 @@ func _ready() -> void:
 	multiplayer.connected_to_server.connect(_on_connected_ok)
 	multiplayer.connection_failed.connect(_on_connected_fail)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
+	_load_net_config()
 
 func public_ws_url() -> String:
 	var env := OS.get_environment("TRENCHWAR_WS_URL").strip_edges()
 	if env != "":
 		return env
+	if _config_wss != "":
+		return _config_wss
 	return DEFAULT_WSS_URL
+
+func wager_api_url() -> String:
+	var env := OS.get_environment("TRENCHWAR_WAGER_API").strip_edges()
+	if env != "":
+		return env
+	# Dedicated/listen host settles via local gateway (Cloudflare fronts clients only).
+	if is_dedicated or (is_online and multiplayer.is_server()):
+		return "http://127.0.0.1:9081"
+	return _config_wager_api
+
+func solana_cluster() -> String:
+	return _config_cluster
+
+func _load_net_config() -> void:
+	# Prefer static file packed / next to index.html (Vercel).
+	if OS.has_feature("web"):
+		var h := HTTPRequest.new()
+		add_child(h)
+		h.request_completed.connect(func(result, code, _h, body):
+			h.queue_free()
+			if result == HTTPRequest.RESULT_SUCCESS and code == 200:
+				_apply_net_config(body.get_string_from_utf8())
+		, CONNECT_ONE_SHOT)
+		h.request("net_config.json")
+		return
+	if FileAccess.file_exists("res://web/net_config.json"):
+		var f := FileAccess.open("res://web/net_config.json", FileAccess.READ)
+		if f:
+			_apply_net_config(f.get_as_text())
+
+func _apply_net_config(text: String) -> void:
+	var data = JSON.parse_string(text)
+	if typeof(data) != TYPE_DICTIONARY:
+		return
+	_config_wss = str(data.get("wss", "")).strip_edges()
+	_config_wager_api = str(data.get("wager_api", "")).strip_edges()
+	_config_cluster = str(data.get("solana_cluster", "devnet"))
+	if _config_wager_api != "":
+		Wager.configure(_config_wager_api, _config_cluster)
+	lobby_changed.emit()
 
 func reset() -> void:
 	if multiplayer.multiplayer_peer != null:
@@ -186,7 +234,7 @@ func set_mode(mode_id: String) -> void:
 	if not is_online:
 		return
 	if multiplayer.is_server():
-		_sync_lobby.rpc(peers, selected_mode, room_code)
+		_sync_lobby.rpc(peers, selected_mode, room_code, stake_sol)
 		lobby_changed.emit()
 	elif is_lobby_leader():
 		rpc_id(1, "_rpc_request_mode", mode_id)
@@ -196,7 +244,7 @@ func _rpc_request_mode(mode_id: String) -> void:
 	if not multiplayer.is_server():
 		return
 	selected_mode = mode_id
-	_sync_lobby.rpc(peers, selected_mode, room_code)
+	_sync_lobby.rpc(peers, selected_mode, room_code, stake_sol)
 
 func set_ready(ready: bool) -> void:
 	if not is_online:
@@ -204,10 +252,48 @@ func set_ready(ready: bool) -> void:
 	if multiplayer.is_server() and not is_dedicated:
 		if peers.has(my_id()):
 			peers[my_id()].ready = ready
-			_sync_lobby.rpc(peers, selected_mode, room_code)
+			_sync_lobby.rpc(peers, selected_mode, room_code, stake_sol)
 			peer_list_changed.emit()
 	else:
 		rpc_id(1, "_rpc_set_ready", ready)
+
+func set_stake(sol: float) -> void:
+	stake_sol = sol
+	Wager.set_stake(sol)
+	if not is_online:
+		return
+	if multiplayer.is_server():
+		_sync_lobby.rpc(peers, selected_mode, room_code, stake_sol)
+		lobby_changed.emit()
+	elif is_lobby_leader():
+		rpc_id(1, "_rpc_request_stake", sol)
+
+@rpc("any_peer", "reliable")
+func _rpc_request_stake(sol: float) -> void:
+	if not multiplayer.is_server():
+		return
+	stake_sol = sol
+	_sync_lobby.rpc(peers, selected_mode, room_code, stake_sol)
+
+func set_wallet(pubkey: String) -> void:
+	local_wallet = pubkey
+	if not is_online:
+		return
+	if multiplayer.is_server() and not is_dedicated:
+		if peers.has(my_id()):
+			peers[my_id()].wallet = pubkey
+			_sync_lobby.rpc(peers, selected_mode, room_code, stake_sol)
+	else:
+		rpc_id(1, "_rpc_set_wallet", pubkey)
+
+@rpc("any_peer", "reliable")
+func _rpc_set_wallet(pubkey: String) -> void:
+	if not multiplayer.is_server():
+		return
+	var id := multiplayer.get_remote_sender_id()
+	if peers.has(id):
+		peers[id].wallet = pubkey
+		_sync_lobby.rpc(peers, selected_mode, room_code, stake_sol)
 
 func set_team(team: String) -> void:
 	local_team = team
@@ -248,8 +334,17 @@ func _try_start_match() -> void:
 			break
 	if not any_ready and peers.size() > 1:
 		return
+	# SOL stakes require exactly 2 funded wallets.
+	if stake_sol > 0.0:
+		if peers.size() != 2:
+			return
+		if not Wager.pot_ready and Wager.status != "funded":
+			return
 	match_active = true
 	pending_mode = selected_mode
+	if stake_sol > 0.0:
+		Wager.room = room_code
+		Wager.stake_sol = stake_sol
 	_rpc_start_match.rpc(selected_mode)
 
 @rpc("authority", "call_local", "reliable")
@@ -267,7 +362,9 @@ func notify_match_over() -> void:
 		room_code = _generate_room_code()
 		for id in peers.keys():
 			peers[id].ready = false
-		_sync_lobby.rpc(peers, selected_mode, room_code)
+		stake_sol = 0.0
+		Wager.reset_match()
+		_sync_lobby.rpc(peers, selected_mode, room_code, stake_sol)
 
 @rpc("any_peer", "reliable")
 func _rpc_set_ready(ready: bool) -> void:
@@ -278,7 +375,7 @@ func _rpc_set_ready(ready: bool) -> void:
 		id = 1
 	if peers.has(id):
 		peers[id].ready = ready
-		_sync_lobby.rpc(peers, selected_mode, room_code)
+		_sync_lobby.rpc(peers, selected_mode, room_code, stake_sol)
 		peer_list_changed.emit()
 
 @rpc("any_peer", "reliable")
@@ -292,18 +389,37 @@ func _apply_team(id: int, team: String) -> void:
 	if not peers.has(id):
 		return
 	peers[id].team = team
-	_sync_lobby.rpc(peers, selected_mode, room_code)
+	_sync_lobby.rpc(peers, selected_mode, room_code, stake_sol)
 	peer_list_changed.emit()
 
 @rpc("authority", "call_local", "reliable")
-func _sync_lobby(peer_map: Dictionary, mode_id: String, code: String) -> void:
+func _sync_lobby(peer_map: Dictionary, mode_id: String, code: String, p_stake: float = 0.0) -> void:
 	peers = peer_map
 	selected_mode = mode_id
 	room_code = code
+	stake_sol = p_stake
+	Wager.set_stake(p_stake)
 	is_online = true
 	status_text = "Room %s — %d player(s)" % [room_code, peers.size()]
 	lobby_changed.emit()
 	peer_list_changed.emit()
+
+func wallet_for_team(team: String) -> String:
+	for p in peers.values():
+		if str(p.get("team", "")) == team and str(p.get("wallet", "")) != "":
+			return str(p.wallet)
+	return ""
+
+func settle_wager_for_green_win(green_won: bool) -> void:
+	if not multiplayer.is_server() or stake_sol <= 0.0:
+		return
+	var team := "green_army" if green_won else "chrome_legion"
+	var w := wallet_for_team(team)
+	if w != "":
+		Wager.room = room_code
+		Wager.stake_sol = stake_sol
+		Wager.api_base = wager_api_url()
+		Wager.settle_winner(w)
 
 @rpc("any_peer", "reliable")
 func _rpc_hello(player_name: String, team: String, code: String) -> void:
@@ -315,8 +431,13 @@ func _rpc_hello(player_name: String, team: String, code: String) -> void:
 	if want != "" and room_code != "" and want != room_code:
 		_rpc_kick.rpc_id(id, "Wrong room code.")
 		return
-	peers[id] = {"name": player_name, "team": team if team != "" else _auto_team(), "ready": false}
-	_sync_lobby.rpc(peers, selected_mode, room_code)
+	peers[id] = {
+		"name": player_name,
+		"team": team if team != "" else _auto_team(),
+		"ready": false,
+		"wallet": "",
+	}
+	_sync_lobby.rpc(peers, selected_mode, room_code, stake_sol)
 	peer_list_changed.emit()
 
 @rpc("authority", "reliable")
@@ -331,7 +452,10 @@ func _register_self() -> void:
 		peer_list_changed.emit()
 		return
 	var nm := "Host" if is_host else ("Soldier-%d" % my_id())
-	peers[my_id()] = {"name": nm, "team": local_team, "ready": is_host, "id": my_id()}
+	peers[my_id()] = {
+		"name": nm, "team": local_team, "ready": is_host, "id": my_id(),
+		"wallet": local_wallet,
+	}
 	peer_list_changed.emit()
 
 func _on_peer_connected(id: int) -> void:
@@ -344,7 +468,7 @@ func _on_peer_disconnected(id: int) -> void:
 	print("[Net] peer disconnected: ", id)
 	peers.erase(id)
 	if multiplayer.is_server():
-		_sync_lobby.rpc(peers, selected_mode, room_code)
+		_sync_lobby.rpc(peers, selected_mode, room_code, stake_sol)
 	peer_list_changed.emit()
 
 func _on_connected_ok() -> void:
@@ -353,6 +477,8 @@ func _on_connected_ok() -> void:
 	is_dedicated = false
 	status_text = "Connected"
 	rpc_id(1, "_rpc_hello", "Soldier-%d" % my_id(), local_team, _wanted_room_code)
+	if local_wallet != "":
+		set_wallet(local_wallet)
 	connection_succeeded.emit()
 	lobby_changed.emit()
 
@@ -486,6 +612,7 @@ func _rpc_bot_died(bot_id: int) -> void:
 func broadcast_match_end(green_won: bool, win_title: String, lose_reason: String) -> void:
 	if not is_online or not multiplayer.is_server():
 		return
+	settle_wager_for_green_win(green_won)
 	_rpc_match_end.rpc(green_won, win_title, lose_reason)
 
 @rpc("authority", "reliable", "call_local")

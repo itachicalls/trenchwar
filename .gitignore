@@ -5,3 +5,7 @@ tools/
 build/
 smoke_log.txt
 _tmp_kenney/
+services/live-gateway/node_modules/
+services/live-gateway/.data/
+api/node_modules/
+api/wager/node_modules/

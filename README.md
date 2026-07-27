@@ -23,25 +23,25 @@ A headless CI smoke test is built in:
 godot --path . -- --smoketest
 ```
 
-## Online PvP (worldwide)
+## Online PvP (worldwide, no credit card)
 
 Every GAME MODE supports online humans. Offline = vs bots; online = humans + server-authoritative bots.
 
 ### Players
 
-1. **GAME MODES → ONLINE PVP → QUICK PLAY** (joins the public `wss://` server).
-2. Or **JOIN CODE** with a 4-letter room code a friend shared.
-3. Pick team → Ready → lobby leader **START MATCH**.
-4. Mobile/web work as clients (touch controls). They cannot host.
+1. **GAME MODES → ONLINE PVP → QUICK PLAY**
+2. Or **JOIN CODE** with a 4-letter room code
+3. Optional **SOL stake** (web/Phantom): both deposit → winner takes the pot
+4. Ready → lobby leader **START MATCH**
+5. Mobile browsers work (touch + Phantom deep link). Web clients cannot host.
 
-### Operators (public server)
+### Operator (you — free Cloudflare tunnel)
 
-Vercel only hosts the static game. The match server is separate — see [`server/README.md`](server/README.md):
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/go_live.ps1 -Push
+```
 
-- **Docker + Caddy** on a VPS → `wss://play.yourdomain.com`
-- **Fly.io** → `wss://trenchwar-play.fly.dev` (default baked into `Net.DEFAULT_WSS_URL`)
-
-Override the client URL with env `TRENCHWAR_WS_URL` before export, or Advanced → custom URL in the lobby.
+Keeps Godot + wager gateway + Cloudflare tunnel running and publishes `web/net_config.json` to Vercel. Details: [`server/README.md`](server/README.md).
 
 LAN debug: Advanced → Host LAN Room / `ws://127.0.0.1:9080`.
 

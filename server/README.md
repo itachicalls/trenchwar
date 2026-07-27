@@ -1,43 +1,36 @@
-# Trenchwar dedicated online server
+# Trenchwar live online (no credit card)
 
-Public WebSocket game host for worldwide PvP. The Vercel site stays a static CDN;
-this process is the always-on match authority.
+Public play uses a **free Cloudflare quick tunnel** — not Fly/AWS.
 
-## Local (LAN / smoke)
+## Go live (Windows)
 
-```bash
-# from repo root
+```powershell
+# From repo root — keep the window open while people play
+powershell -ExecutionPolicy Bypass -File scripts/go_live.ps1 -Push
+```
+
+This starts:
+
+1. Godot dedicated server (`:9080`)
+2. Solana wager gateway (`:9081`) — WebSocket proxy + `/api/wager/*`
+3. `cloudflared` tunnel → public `https://….trycloudflare.com` / `wss://…`
+4. Writes [`web/net_config.json`](../web/net_config.json) and (with `-Push`) updates Vercel
+
+Players on the Vercel site: **GAME MODES → ONLINE PVP → QUICK PLAY**.
+
+## SOL stakes (1v1)
+
+1. Both players open the **web** build (Phantom / mobile Phantom browser).
+2. Lobby leader picks a stake (e.g. `0.05 SOL`).
+3. Each connects Phantom → **CREATE ESCROW** → **DEPOSIT**.
+4. When status is `funded`, start the match. Winner receives the pot on-chain.
+
+Default cluster: **devnet** (set `SOLANA_CLUSTER=mainnet-beta` before `go_live` for real SOL).
+
+## LAN only
+
+```text
 godot --headless --path . res://server/ServerMain.tscn
-# or Windows:
-# tools/Godot_v4.3-stable_win64_console.exe --headless --path . res://server/ServerMain.tscn
 ```
 
-Clients: `ws://127.0.0.1:9080` (Advanced join) or Quick Play if `DEFAULT_WSS_URL` points here.
-
-## Worldwide (wss://)
-
-Browsers on HTTPS (Vercel) **must** use `wss://`.
-
-### Option A — Docker Compose + Caddy on a VPS
-
-1. Edit [`Caddyfile`](Caddyfile): replace `play.example.com` with your hostname.
-2. DNS A/AAAA → VPS.
-3. `CADDY_EMAIL=you@domain.com docker compose -f server/docker-compose.yml up -d --build`
-4. Set client URL: `wss://play.yourdomain.com` (see `Net.DEFAULT_WSS_URL` / env `TRENCHWAR_WS_URL`).
-
-### Option B — Fly.io
-
-```bash
-fly launch --config server/fly.toml
-fly deploy --config server/fly.toml
-```
-
-Clients use `wss://<app>.fly.dev`.
-
-## Env
-
-| Variable | Meaning |
-|---|---|
-| `TRENCHWAR_PORT` | Bind port (default 9080) |
-| `TRENCHWAR_DEDICATED` | `1` = headless authority (no local soldier) |
-| `TRENCHWAR_WS_URL` | Client default (bake at export or set in shell for desktop) |
+Join `ws://127.0.0.1:9080` via Advanced in the lobby.
