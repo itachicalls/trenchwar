@@ -260,6 +260,10 @@ func _build_scattered_props() -> void:
 	add_barrel(Vector3(-10, 0, 52), 0, 1.8)
 	add_barrel(Vector3(-6.6, 0, 54), 60, 2.2, true)
 	add_barrel(Vector3(-4, 0, 48), -25, 1.8)
+	# Clear of structure_1 / structure_2 footprints — extras if any clip.
+	add_barrel(Vector3(20, 0, 44), 35, 1.9)
+	add_barrel(Vector3(-48, 0, 28), -50, 2.0, true)
+	add_barrel(Vector3(8, 0, -48), 110, 1.8)
 	add_prop("debris_pile", Vector3(-58, 0, 12), 45, 5.0)
 	add_prop("pallet", Vector3(14, 0, 34), 70, 3.4)
 	add_prop("pallet_broken", Vector3(-14, 0, -44), 115, 3.2)
@@ -333,6 +337,7 @@ func _spawn_units() -> void:
 
 func _spawn_pickups_and_toys() -> void:
 	scatter_coins(ROOM_W * 0.4, ROOM_D * 0.4)
+	scatter_chrome_fuel(ROOM_W * 0.38, ROOM_D * 0.38, 7)
 	for pos in [Vector3(-36, 0, 8), Vector3(8, 0, 12), Vector3(40, 2, 34), Vector3(-24, 3.4, -24), Vector3(60, 0, -14)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(-16, 0, -12), Vector3(26, 0, 14), Vector3(-52, 0, -18), Vector3(52, 0, 48)]:
@@ -367,7 +372,7 @@ func _start_mission() -> void:
 			"rescue":
 				return nearest_in_group("green_allies", func(n): return n is SquadMate and n.captive)
 			"barrels":
-				return nearest_in_group("explosive_barrels")
+				return nearest_chrome_fuel()
 			"pods":
 				return nearest_in_group("chrome_pods")
 		return Vector3.INF

@@ -224,6 +224,10 @@ func _build_rug_and_props() -> void:
 	add_prop("container_small", Vector3(46, 0, 20), 20, 4.2)   # chrome supply drop
 	add_barrel(Vector3(12, 0, 33), 0, 1.8)
 	add_barrel(Vector3(14.4, 0, 31.6), 70, 1.8)
+	# Open-rug extras so a cache inside furniture can't soft-lock the quota.
+	add_barrel(Vector3(-30, 0, -20), 25, 1.9)
+	add_barrel(Vector3(0, 0, 8), -40, 2.0, true)
+	add_barrel(Vector3(40, 0, -36), 80, 1.8)
 	add_prop("gascan", Vector3(-20, 0, -24), 15, 1.6)
 	add_prop("pallet", Vector3(20, 0, 4), 45, 3.4)
 	add_prop("woodplanks", Vector3(-4, 0, -30), 100, 4.2)
@@ -311,6 +315,7 @@ func _spawn_units() -> void:
 
 func _spawn_pickups_and_toys() -> void:
 	scatter_coins(ROOM_W * 0.4, ROOM_D * 0.4)
+	scatter_chrome_fuel(ROOM_W * 0.38, ROOM_D * 0.38, 6)
 	for pos in [Vector3(-30, 0, 0), Vector3(12, 0, -25), Vector3(0, 16.2, 5), Vector3(38, 0, 30), Vector3(0, 14.6, -40)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(-15, 0, 20), Vector3(25, 0, -8), Vector3(52, 0, -30)]:
@@ -351,7 +356,7 @@ func _start_mission() -> void:
 			"rescue":
 				return nearest_in_group("green_allies", func(n): return n is SquadMate and n.captive)
 			"barrels":
-				return nearest_in_group("explosive_barrels")
+				return nearest_chrome_fuel()
 			"pods":
 				return nearest_in_group("chrome_pods")
 			"filters":

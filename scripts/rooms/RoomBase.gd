@@ -133,6 +133,15 @@ func nearest_in_group(group: String, filter: Callable = Callable()) -> Vector3:
 				best = node.global_position
 	return best
 
+## Waypoint for barrel objectives: prefer caches that finished clearance so
+## the pink diamond never points into a wall the player can't shoot through.
+func nearest_chrome_fuel() -> Vector3:
+	var clear := nearest_in_group("explosive_barrels",
+		func(n: Node) -> bool: return bool(n.get_meta("chrome_fuel_clear", false)))
+	if clear != Vector3.INF:
+		return clear
+	return nearest_in_group("explosive_barrels")
+
 func _setup_nav() -> void:
 	nav_region = NavigationRegion3D.new()
 	nav_region.name = "NavRegion"
@@ -149,12 +158,17 @@ func _bake_navmesh() -> void:
 	# path anywhere (squadmates stood still after rescue, patrols never walked).
 	mesh.geometry_source_geometry_mode = NavigationMesh.SOURCE_GEOMETRY_GROUPS_WITH_CHILDREN
 	mesh.geometry_source_group_name = "nav_geometry"
-	mesh.agent_radius = 0.5
+	# Agent radius larger than the capsule (0.35): paths stay off prop faces so
+	# soldiers don't path into a wall then grind forever along it.
+	mesh.agent_radius = 0.7
 	mesh.agent_height = 1.6
 	mesh.agent_max_climb = 1.2
 	mesh.agent_max_slope = 40.0
-	mesh.cell_size = 0.25
+	mesh.cell_size = 0.3
 	mesh.cell_height = 0.25
+	# Slightly larger polygons = fewer micro-corridors that look walkable but
+	# aren't wide enough for a soldier + prop clearance.
+	mesh.edge_max_error = 1.3
 	nav_region.navigation_mesh = mesh
 	nav_region.bake_navigation_mesh.call_deferred(true)
 
@@ -463,6 +477,8 @@ func add_prop(prop_name: String, pos: Vector3, yaw_deg: float = 0.0, target_size
 	return rig
 
 ## Shootable fuel barrel (prop mesh). Spilled variants tip on their side.
+## Defers a clearance check so barrels dropped into furniture / bunkers get
+## nudged into open space — a barrel you can't shoot soft-locks the mission.
 func add_barrel(pos: Vector3, yaw_deg: float = 0.0, target_size: float = 1.8, spilled: bool = false) -> ExplosiveBarrel:
 	var barrel := ExplosiveBarrel.new()
 	barrel.spilled = spilled
@@ -470,7 +486,70 @@ func add_barrel(pos: Vector3, yaw_deg: float = 0.0, target_size: float = 1.8, sp
 	add_child(barrel)
 	barrel.position = pos
 	barrel.rotation_degrees.y = yaw_deg
+	call_deferred("_unstick_barrel", barrel)
 	return barrel
+
+## Physics only exists after the tree is ready, so hand-placed barrels that
+## land inside a crate / bunker get a spiral of candidate spots until free.
+func _unstick_barrel(barrel: ExplosiveBarrel) -> void:
+	if barrel == null or not is_instance_valid(barrel):
+		return
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	if not is_instance_valid(barrel):
+		return
+	var world := get_world_3d()
+	if world == null:
+		return
+	var origin := barrel.global_position
+	if not _barrel_blocked_at(world, origin, barrel):
+		# Still snap Y to the real floor so barrels don't float inside a deck.
+		barrel.global_position.y = RoomBase.surface_y_at(world, origin, 0.02)
+		barrel.set_meta("chrome_fuel_clear", true)
+		return
+	var radii: Array[float] = [2.5, 4.5, 7.0, 10.0, 14.0]
+	var angles := 8
+	for r in radii:
+		for i in angles:
+			var a: float = float(i) * TAU / float(angles) + r * 0.35
+			var cand := origin + Vector3(cos(a) * r, 0.0, sin(a) * r)
+			cand.y = RoomBase.surface_y_at(world, cand, 0.02)
+			if not _barrel_blocked_at(world, cand, barrel):
+				barrel.global_position = cand
+				barrel.set_meta("chrome_fuel_clear", true)
+				return
+	# Last resort: lift it onto the obstructing roof so it stays shootable.
+	barrel.global_position = Vector3(origin.x, origin.y + 6.0, origin.z)
+	barrel.global_position.y = RoomBase.surface_y_at(world, barrel.global_position, 0.05)
+	barrel.set_meta("chrome_fuel_clear", true)
+
+func _barrel_blocked_at(world: World3D, pos: Vector3, self_body: CollisionObject3D) -> bool:
+	var params := PhysicsShapeQueryParameters3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = 0.85
+	params.shape = sphere
+	params.transform = Transform3D(Basis(), pos + Vector3.UP * 0.9)
+	params.collision_mask = 0b0001
+	params.exclude = [self_body.get_rid()]
+	return not world.direct_space_state.intersect_shape(params, 4).is_empty()
+
+## Extra Chrome fuel caches scattered across the walkable floor. Mission
+## quotas stay the same — these are surplus so a barrel buried in geometry
+## can never soft-lock the objective.
+func scatter_chrome_fuel(half_w: float, half_d: float, count: int = 6) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(get_script().resource_path) + 911
+	var placed := 0
+	var attempts := 0
+	while placed < count and attempts < count * 10:
+		attempts += 1
+		var pos := Vector3(rng.randf_range(-half_w, half_w), 0.0, rng.randf_range(-half_d, half_d))
+		# Keep a little breathing room from spawn corners / map edges.
+		if absf(pos.x) > half_w * 0.92 or absf(pos.z) > half_d * 0.92:
+			continue
+		add_barrel(pos, rng.randf_range(0.0, 360.0), rng.randf_range(1.7, 2.4),
+			rng.randf() < 0.35)
+		placed += 1
 
 ## Stand-to-capture zone marked with a premade sign prop (no freestyle flags).
 ## Calls on_captured once when hold completes. Returns the Area3D zone.

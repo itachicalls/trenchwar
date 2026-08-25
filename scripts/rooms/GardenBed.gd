@@ -209,12 +209,19 @@ func _build_legion_rear() -> void:
 	add_prop("container_long", Vector3(-58, 0, rear_z + 12), 90.0, 12.0)
 	add_prop("pipes", Vector3(12, 0, rear_z - 2), 0.0, 6.0)
 	add_prop("gastank", Vector3(-14, 0, rear_z - 2), 30.0, 5.0)
-	# The three artillery pods (destructible objectives).
-	for x in [-24.0, 0.0, 24.0]:
+	# The three artillery pods sit in open ground between the bunkers.
+	# structure_1/2 are huge at toy scale — keep pods well clear of them.
+	for x in [-8.0, 8.0, 0.0]:
 		var pod := DropPod.new()
 		add_child(pod)
-		pod.position = Vector3(x, 0, rear_z + 4)
-		add_barrel(Vector3(x + 3.5, 0, rear_z + 7), randf() * 360.0, 2.8, true)
+		pod.position = Vector3(x, 0, rear_z + 10)
+	# Fuel dumps pushed south into no-man's-land so the bunker props can't
+	# swallow them (a buried barrel soft-locks any shoot objective).
+	add_barrel(Vector3(-10, 0, rear_z + 20), 25.0, 2.8, true)
+	add_barrel(Vector3(6, 0, rear_z + 22), -40.0, 2.6)
+	add_barrel(Vector3(18, 0, rear_z + 18), 80.0, 2.8, true)
+	add_barrel(Vector3(-42, 0, rear_z + 24), 15.0, 2.4)
+	add_barrel(Vector3(40, 0, rear_z + 16), -70.0, 2.6, true)
 
 # =========================================================================
 #  FLORA — tomato-plant jungle along the flanks (trees at toy scale).
@@ -275,6 +282,7 @@ func _spawn_enemy(variant_name: String, route: Array[Vector3], pos: Vector3, ale
 
 func _spawn_pickups_and_toys() -> void:
 	scatter_coins(ROOM_W * 0.4, ROOM_D * 0.4)
+	scatter_chrome_fuel(ROOM_W * 0.38, ROOM_D * 0.38, 8)
 	for pos in [Vector3(-40, 0, 34), Vector3(30, 0, 6), Vector3(-20, 0, -20), Vector3(50, 0, -30)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(20, 0, 34), Vector3(-16, 0, 4), Vector3(6, 0, -34)]:

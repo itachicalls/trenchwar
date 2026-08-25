@@ -172,6 +172,7 @@ func _spawn_units() -> void:
 
 func _spawn_pickups_and_toys() -> void:
 	scatter_coins(ROOM_W * 0.35, ROOM_D * 0.35)
+	scatter_chrome_fuel(ROOM_W * 0.32, ROOM_D * 0.32, 5)
 	for pos in [Vector3(-40, 0, 30), Vector3(12, 0, 20), Vector3(36, 0, -20)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(-16, 0, 8), Vector3(24, 0, 4)]:

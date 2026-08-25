@@ -261,6 +261,10 @@ func _build_scattered_props() -> void:
 	add_prop("pallet", Vector3(-10, 0, 34), 10, 3.4)
 	add_barrel(Vector3(48, 0, -14), 0, 1.8)
 	add_barrel(Vector3(46.4, 0, -11.8), 40, 1.8)
+	# Open-carpet extras — beachhead props used to swallow the only caches.
+	add_barrel(Vector3(-22, 0, 28), 20, 1.9)
+	add_barrel(Vector3(8, 0, 36), -55, 2.0, true)
+	add_barrel(Vector3(-6, 0, -28), 100, 1.8)
 	add_prop("cone", Vector3(-24, 0, -8), 0, 1.6)
 	add_prop("woodplanks", Vector3(14, 0, 38), 75, 4.0)
 	# Deep-detail pass: the Green Army has fortified every approach.
@@ -367,6 +371,7 @@ func _spawn_units() -> void:
 
 func _spawn_pickups_and_toys() -> void:
 	scatter_coins(ROOM_W * 0.4, ROOM_D * 0.4)
+	scatter_chrome_fuel(ROOM_W * 0.38, ROOM_D * 0.38, 6)
 	for pos in [Vector3(-20, 0, 10), Vector3(10, 0, -20), Vector3(30, 0, 20), Vector3(-38, 10, -22)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(-10, 0, 0), Vector3(25, 0, -5), Vector3(45, 0, 10)]:
@@ -403,7 +408,7 @@ func _start_mission() -> void:
 			"rescue":
 				return nearest_in_group("green_allies", func(n): return n is SquadMate and n.captive)
 			"barrels":
-				return nearest_in_group("explosive_barrels")
+				return nearest_chrome_fuel()
 			"pods":
 				return nearest_in_group("chrome_pods")
 		return Vector3.INF

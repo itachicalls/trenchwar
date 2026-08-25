@@ -32,8 +32,11 @@ func _unit_ready() -> void:
 	collision_layer = 0b1000
 	collision_mask = 0b1111   # still collides with world, units and each other
 	_nav = NavigationAgent3D.new()
-	_nav.path_desired_distance = 0.6
-	_nav.target_desired_distance = 1.2
+	_nav.path_desired_distance = 0.7
+	_nav.target_desired_distance = 1.3
+	_nav.radius = 0.5
+	_nav.path_max_distance = 4.0
+	_nav.avoidance_enabled = false
 	add_child(_nav)
 	_follow_offset = Vector3(randf_range(-2.2, 2.2), 0, randf_range(1.4, 3.0))
 	if captive:
@@ -190,18 +193,28 @@ func _do_follow(delta: float, speed: float) -> void:
 		# alone lies when sliding along a wall).
 		var progress := global_position.distance_to(_last_pos)
 		_last_pos = global_position
-		_stuck_time = _stuck_time + delta if progress < 0.03 else 0.0
-		if _stuck_time > 0.5 and _stuck_time < 2.5 and try_vault():
+		var grinding := progress < 0.035 or (is_on_wall() and progress < 0.12)
+		_stuck_time = _stuck_time + delta if grinding else maxf(_stuck_time - delta * 2.0, 0.0)
+		if _stuck_time > 0.35 and try_vault():
 			_stuck_time = 0.0
 			return
-		if _stuck_time > 2.5 or to_player.length() > 30.0:
+		if _stuck_time > 0.7 and is_on_wall():
+			var n := get_wall_normal()
+			n.y = 0.0
+			if n.length_squared() > 0.01:
+				n = n.normalized()
+				velocity.x = n.x * speed
+				velocity.z = n.z * speed
+				velocity.y = maxf(velocity.y, 5.0)
+		if _stuck_time > 1.4 or to_player.length() > 30.0:
 			_stuck_time = 0.0
 			# Snap onto the navmesh near the player — never inside furniture.
 			var want: Vector3 = p.global_position + Basis(Vector3.UP, facing_yaw) \
-				* Vector3(randf_range(-1.5, 1.5), 0.0, randf_range(1.2, 2.2))
+				* Vector3(randf_range(-2.0, 2.0), 0.0, randf_range(1.5, 3.0))
 			var map := get_world_3d().navigation_map
 			global_position = NavigationServer3D.map_get_closest_point(map, want) + Vector3.UP * 0.3
 			Fx.dust(self, global_position)
+			_nav.target_position = anchor
 	else:
 		_stuck_time = 0.0
 		velocity.x = move_toward(velocity.x, 0.0, 30.0 * delta)
@@ -223,6 +236,26 @@ func _move_toward_point(point: Vector3, delta: float, speed: float) -> void:
 	if dir.length() < 0.05:
 		return
 	dir = dir.normalized()
+	var probe := PhysicsRayQueryParameters3D.create(
+		global_position + Vector3.UP * 0.7,
+		global_position + Vector3.UP * 0.7 + dir * 1.2)
+	probe.collision_mask = 0b0001
+	probe.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(probe)
+	if not hit.is_empty():
+		var n: Vector3 = hit.normal
+		n.y = 0.0
+		if n.length_squared() > 0.01:
+			n = n.normalized()
+			if dir.dot(n) < -0.5:
+				velocity.x = n.x * speed
+				velocity.z = n.z * speed
+				_stuck_time = maxf(_stuck_time, 0.6)
+				face_direction(n, delta)
+				return
+			var slid := dir - n * dir.dot(n)
+			if slid.length_squared() > 0.05:
+				dir = slid.normalized()
 	velocity.x = dir.x * speed
 	velocity.z = dir.z * speed
 	face_direction(dir, delta)

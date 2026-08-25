@@ -258,6 +258,9 @@ func _build_scattered_props() -> void:
 	add_prop("container_small", Vector3(30, 0, -40), 10, 4.4)
 	add_barrel(Vector3(-2, 0, 40), 0, 1.8)
 	add_barrel(Vector3(0.6, 0, 42.2), 55, 1.8)
+	add_barrel(Vector3(-40, 0, -8), 30, 1.9)
+	add_barrel(Vector3(36, 0, 20), -70, 2.0, true)
+	add_barrel(Vector3(-18, 0, 28), 110, 1.8)
 	add_prop("gascan", Vector3(24, 0, -6), -20, 1.6)
 	add_prop("pallet", Vector3(-24, 0, 8), 65, 3.4)
 	add_prop("woodplanks", Vector3(44, 0, -16), 130, 4.2)
@@ -333,6 +336,7 @@ func _spawn_units() -> void:
 
 func _spawn_pickups_and_toys() -> void:
 	scatter_coins(ROOM_W * 0.4, ROOM_D * 0.4)
+	scatter_chrome_fuel(ROOM_W * 0.38, ROOM_D * 0.38, 6)
 	var ty: float = float(get_meta("table_top_y", 21.0))
 	var tc: Vector3 = get_meta("table_center", Vector3(-6, 0, 2))
 	for pos in [Vector3(-30, 0, 12), Vector3(14, 0, -16), Vector3(tc.x, ty, tc.z), Vector3(46, 0, 0), Vector3(-16, 26.2, -ROOM_D / 2 + 12)]:
@@ -378,7 +382,7 @@ func _start_mission() -> void:
 			"snipers":
 				return nearest_in_group("enemies", func(n): return n is EnemySoldier and n.variant == "sniper")
 			"barrels":
-				return nearest_in_group("explosive_barrels")
+				return nearest_chrome_fuel()
 			"pods":
 				return nearest_in_group("chrome_pods")
 		return Vector3.INF

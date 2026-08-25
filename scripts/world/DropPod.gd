@@ -9,8 +9,9 @@ var _beacon: OmniLight3D = null
 var _blink_phase := randf() * TAU
 
 func _ready() -> void:
-	collision_layer = 0b0010   # damageable like a unit
+	collision_layer = 0b0011   # world + units: blocks movement AND carves navmesh
 	add_to_group("chrome_pods")
+	add_to_group("nav_geometry")
 	health = Health.new()
 	health.setup(pod_health)
 	health.died.connect(_on_destroyed)

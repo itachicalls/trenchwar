@@ -240,6 +240,7 @@ func _spawn_enemy(variant_name: String, route: Array[Vector3], pos: Vector3, ale
 
 func _spawn_pickups_and_toys() -> void:
 	scatter_coins(ROOM_W * 0.4, ROOM_D * 0.4)
+	scatter_chrome_fuel(ROOM_W * 0.38, ROOM_D * 0.38, 5)
 	for pos in [Vector3(-38, 0, 36), Vector3(24, 0, 30), Vector3(-14, 0, -22), Vector3(40, 0, -24)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(6, 0, 22), Vector3(-30, 0, -24), Vector3(48, 0, 14)]:

@@ -92,6 +92,10 @@ var _burst_left := 0
 var _burst_pause := 0.0
 ## First physics frame: lift out of furniture if a spawn point was inside a deck.
 var _needs_settle := true
+## How many times we've had to teleport recently — escalates recovery distance.
+var _unstick_streak := 0
+var _unstick_cd := 0.0
+var _repath_cd := 0.0
 
 func _body_params() -> Dictionary:
 	var cfg: Dictionary = VARIANTS[variant]
@@ -109,9 +113,10 @@ func _unit_ready() -> void:
 	# friendly soldiers.
 	collision_mask = 0b1111
 	_nav = NavigationAgent3D.new()
-	_nav.path_desired_distance = 0.55
-	_nav.target_desired_distance = 0.9
-	_nav.radius = 0.45
+	_nav.path_desired_distance = 0.7
+	_nav.target_desired_distance = 1.1
+	_nav.radius = 0.5
+	_nav.path_max_distance = 4.0
 	# Avoidance RVO needs velocity_computed wiring — keep off; wall probes +
 	# _unstick handle prop grinding without freezing agents.
 	_nav.avoidance_enabled = false
@@ -151,7 +156,7 @@ func _settle_on_surface() -> void:
 			break
 		global_position.y += 0.45
 	# Snap patrol waypoints onto the same surface height so AI doesn't path
-	# into the deck mid-route.
+	# into the deck mid-route. Also nudge any waypoint buried inside a prop.
 	for i in patrol_points.size():
 		var p: Vector3 = patrol_points[i]
 		var pq := PhysicsRayQueryParameters3D.create(
@@ -159,7 +164,8 @@ func _settle_on_surface() -> void:
 		pq.collision_mask = 0b0001
 		var ph := space.intersect_ray(pq)
 		if not ph.is_empty():
-			patrol_points[i] = Vector3(p.x, ph.position.y + 0.02, p.z)
+			p = Vector3(p.x, ph.position.y + 0.02, p.z)
+		patrol_points[i] = _clear_point(p, space)
 
 func _physics_process(delta: float) -> void:
 	if not Game.is_playing():
@@ -211,45 +217,131 @@ func _physics_process(delta: float) -> void:
 		AiState.COMBAT:
 			_do_combat(delta)
 	move_and_slide()
+	_unstick_cd = maxf(_unstick_cd - delta, 0.0)
+	_repath_cd = maxf(_repath_cd - delta, 0.0)
+	if _unstick_cd <= 0.0:
+		_unstick_streak = maxi(_unstick_streak - 1, 0)
 	_detect_stuck(delta)
 	if near_player or state != AiState.PATROL:
 		animate_waddle(delta, Vector2(velocity.x, velocity.z).length() > 0.5)
 
-## Wanting to move but going nowhere = wedged against something. First try a
-## HOP (soldiers vault low clutter like real toys), then lateral slide / nav snap.
+## Wanting to move but going nowhere = wedged against something. Vault low
+## clutter first; if it's a real wall, back off and repath — never sand it.
 func _detect_stuck(delta: float) -> void:
-	var wants_move := Vector2(velocity.x, velocity.z).length() > 0.8
+	var wants_move := Vector2(velocity.x, velocity.z).length() > 0.6
 	var progress := global_position.distance_to(_last_pos)
 	_last_pos = global_position
-	if wants_move and progress < 0.035:
+	if wants_move and progress < 0.04:
 		_stuck_time += delta
+	elif is_on_wall() and wants_move:
+		# Sliding along a wall still "progresses" a little — count it as stuck
+		# so they don't orbit a crate forever.
+		_stuck_time += delta * 0.6
 	else:
-		_stuck_time = maxf(_stuck_time - delta * 1.5, 0.0)
+		_stuck_time = maxf(_stuck_time - delta * 2.0, 0.0)
 		return
-	# Early response: obstacle is knee-high and clear above? Vault it.
-	if _stuck_time > 0.35 and try_vault():
+	if _stuck_time > 0.3 and try_vault():
 		_stuck_time = 0.0
 		return
 	# Sidestep off the face they're grinding into.
-	if _stuck_time > 0.9:
-		var side := global_transform.basis.x * (1.0 if randf() > 0.5 else -1.0)
-		velocity.x = side.x * move_speed * 1.1
-		velocity.z = side.z * move_speed * 1.1
-		velocity.y = 6.0
-	if _stuck_time > 1.35:
+	if _stuck_time > 0.55:
+		var away := _wall_away_dir()
+		var side := away.cross(Vector3.UP).normalized()
+		if side.length_squared() < 0.01:
+			side = global_transform.basis.x
+		if randf() > 0.5:
+			side = -side
+		velocity.x = (away.x * 0.7 + side.x) * move_speed * 1.2
+		velocity.z = (away.z * 0.7 + side.z) * move_speed * 1.2
+		velocity.y = maxf(velocity.y, 5.5)
+	if _stuck_time > 0.95:
 		_unstick()
+
+## Direction that points away from whatever we're kissing (wall normal, or
+## reverse of current wish velocity as a fallback).
+func _wall_away_dir() -> Vector3:
+	if is_on_wall():
+		var n := get_wall_normal()
+		n.y = 0.0
+		if n.length_squared() > 0.01:
+			return n.normalized()
+	var wish := Vector3(velocity.x, 0, velocity.z)
+	if wish.length_squared() > 0.01:
+		return -wish.normalized()
+	if body_rig != null:
+		return body_rig.global_transform.basis.z
+	return Vector3.FORWARD
+
+## Nudge a world point out of overlapping static props (patrol goals, etc.).
+func _clear_point(pos: Vector3, space: PhysicsDirectSpaceState3D) -> Vector3:
+	var out := pos
+	for attempt in 10:
+		var params := PhysicsShapeQueryParameters3D.new()
+		var sphere := SphereShape3D.new()
+		sphere.radius = 0.55
+		params.shape = sphere
+		params.transform = Transform3D(Basis(), out + Vector3.UP * 0.75)
+		params.collision_mask = 0b0001
+		params.exclude = [get_rid()]
+		var hits := space.intersect_shape(params, 2)
+		if hits.is_empty():
+			return out
+		var push := Vector3(randf_range(-1, 1), 0, randf_range(-1, 1))
+		var col = hits[0].get("collider")
+		if col is Node3D and is_instance_valid(col):
+			var away: Vector3 = out - (col as Node3D).global_position
+			away.y = 0.0
+			if away.length_squared() > 0.01:
+				push = away.normalized()
+		if push.length_squared() < 0.01:
+			push = Vector3.RIGHT.rotated(Vector3.UP, attempt * 0.7)
+		out += push.normalized() * 1.6
+		var floor_q := PhysicsRayQueryParameters3D.create(
+			out + Vector3.UP * 8.0, out + Vector3.DOWN * 20.0)
+		floor_q.collision_mask = 0b0001
+		var floor_hit := space.intersect_ray(floor_q)
+		if not floor_hit.is_empty():
+			out.y = floor_hit.position.y + 0.02
+	return out
 
 func _unstick() -> void:
 	_stuck_time = 0.0
+	_unstick_streak += 1
+	_unstick_cd = 4.0
 	var map := get_world_3d().navigation_map
-	var side := global_transform.basis.x * (2.2 if randf() > 0.5 else -2.2)
-	var jitter := side + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
-	var free_point := NavigationServer3D.map_get_closest_point(map, global_position + jitter)
-	global_position = free_point + Vector3.UP * 0.25
-	Fx.dust(self, global_position)
-	# Skip a dead patrol waypoint / repath to target so they don't re-kiss the prop.
+	var away := _wall_away_dir()
+	var radius := 2.5 + float(_unstick_streak) * 2.0
+	var candidates: Array[Vector3] = [
+		global_position + away * radius,
+		global_position + away.cross(Vector3.UP).normalized() * radius,
+		global_position - away.cross(Vector3.UP).normalized() * radius,
+		global_position + away * (radius * 1.8) + Vector3(randf_range(-2, 2), 0, randf_range(-2, 2)),
+		global_position + Vector3(randf_range(-radius, radius), 0, randf_range(-radius, radius)),
+	]
+	if target != null and is_instance_valid(target):
+		candidates.append(target.global_position)
 	if not patrol_points.is_empty():
 		_patrol_index = (_patrol_index + 1) % patrol_points.size()
+		candidates.append(patrol_points[_patrol_index])
+	var picked := Vector3.ZERO
+	var found := false
+	for cand in candidates:
+		var on_nav := NavigationServer3D.map_get_closest_point(map, cand)
+		if on_nav.distance_to(cand) > 6.0:
+			continue
+		# Prefer points that aren't still hugging the same wall.
+		if on_nav.distance_to(global_position) < 1.2 and _unstick_streak < 2:
+			continue
+		picked = on_nav
+		found = true
+		break
+	if not found:
+		picked = NavigationServer3D.map_get_closest_point(map, global_position + away * (radius + 3.0))
+	global_position = picked + Vector3.UP * 0.3
+	velocity = away * move_speed * 0.5
+	Fx.dust(self, global_position)
+	# Force a fresh path so they don't walk straight back into the same face.
+	_repath_cd = 0.0
 	if target != null and is_instance_valid(target) and _nav != null:
 		_nav.target_position = target.global_position
 		state = AiState.ALERT
@@ -421,10 +513,11 @@ func _move_along_path(delta: float, speed: float) -> void:
 	if dir.length() < 0.05:
 		return
 	dir = dir.normalized()
-	# Don't plow chest-first into world geometry — slide along it.
+	# Don't plow chest-first into world geometry. Sliding along forever was the
+	# "endlessly running into walls" bug — after a brief slide, back off + repath.
 	var probe := PhysicsRayQueryParameters3D.create(
 		global_position + Vector3.UP * 0.7,
-		global_position + Vector3.UP * 0.7 + dir * 1.1)
+		global_position + Vector3.UP * 0.7 + dir * 1.25)
 	probe.collision_mask = 0b0001
 	probe.exclude = [get_rid()]
 	var hit := get_world_3d().direct_space_state.intersect_ray(probe)
@@ -433,11 +526,24 @@ func _move_along_path(delta: float, speed: float) -> void:
 		n.y = 0.0
 		if n.length_squared() > 0.01:
 			n = n.normalized()
-			dir = (dir - n * dir.dot(n)).normalized()
-			if dir.length_squared() < 0.05:
-				# Dead-end: vault or unstick next tick.
-				_stuck_time = maxf(_stuck_time, 0.5)
+			var slid := (dir - n * dir.dot(n))
+			if slid.length_squared() < 0.08 or dir.dot(n) < -0.55:
+				# Head-on into a wall: reverse off it and ask for a new path.
+				velocity.x = n.x * speed * 0.9
+				velocity.z = n.z * speed * 0.9
+				_stuck_time = maxf(_stuck_time, 0.7)
+				if _repath_cd <= 0.0 and target != null and is_instance_valid(target):
+					_repath_cd = 0.45
+					# Nudge the goal slightly so NavigationAgent rebuilds.
+					var jitter := Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
+					_nav.target_position = target.global_position + jitter
+				elif _repath_cd <= 0.0 and not patrol_points.is_empty():
+					_repath_cd = 0.45
+					_patrol_index = (_patrol_index + 1) % patrol_points.size()
+					_nav.target_position = patrol_points[_patrol_index]
+				face_direction(n, delta)
 				return
+			dir = slid.normalized()
 	velocity.x = dir.x * speed
 	velocity.z = dir.z * speed
 	face_direction(dir, delta)

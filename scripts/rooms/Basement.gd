@@ -140,6 +140,7 @@ func _spawn_units() -> void:
 
 func _spawn_pickups_and_toys() -> void:
 	scatter_coins(ROOM_W * 0.35, ROOM_D * 0.35)
+	scatter_chrome_fuel(ROOM_W * 0.32, ROOM_D * 0.32, 6)
 	for pos in [Vector3(-28, 0, 20), Vector3(16, 0, 8), Vector3(34, 0, 26)]:
 		Pickup.spawn_health(self, pos)
 	for pos in [Vector3(-12, 0, -16), Vector3(8, 0, 24)]:
@@ -165,7 +166,7 @@ func _start_mission() -> void:
 			"rescue":
 				return nearest_in_group("green_allies", func(n): return n is SquadMate and n.captive)
 			"barrels":
-				return nearest_in_group("explosive_barrels")
+				return nearest_chrome_fuel()
 			"toys":
 				return nearest_in_group("lost_toys")
 			"drones":
