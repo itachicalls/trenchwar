@@ -54,6 +54,19 @@ func _setup_mode() -> void:
 	for i in green_flank:
 		spawn_bot(GREEN, Vector3(-arena_half + 18, 1, (i - 1) * 8.0), ["trooper", "scout", "commando"][i % 3])
 	spawn_weapon_drop(Vector3(0, 4.2, 0), "marble", 50.0)
+	# Lane markers so armor reads the duel axis at a glance.
+	for side in [-1.0, 1.0]:
+		var c := Color(0.35, 0.85, 0.45) if side < 0 else Color(0.95, 0.35, 0.3)
+		var pad := MeshInstance3D.new()
+		var pm := CylinderMesh.new()
+		pm.top_radius = 4.5
+		pm.bottom_radius = 4.5
+		pm.height = 0.2
+		pad.mesh = pm
+		pad.material_override = ToyMaterials.glow(c, 1.1 if not Game.low_gfx() else 0.6)
+		pad.position = (_green_base() if side < 0 else _chrome_base()) + Vector3(0, 0.05, 0)
+		add_child(pad)
+	Fx.ring_pulse(self, Vector3(0, 1, 0), Color(1.0, 0.7, 0.3), 10.0, 0.75)
 	_update_banner()
 	sub_banner.text = ("ONLINE PVP  •  FIRST TO %d HULL KILLS" if Net.is_online else "FIRST TO %d HULL KILLS  •  MOUSE AIMS TURRET  •  A/D HULL") % SCORE_TARGET
 	Events.notify.emit("TANK BATTLE: click to lock mouse look, A/D turns the hull, W/S drives.")

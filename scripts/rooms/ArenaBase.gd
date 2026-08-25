@@ -121,7 +121,13 @@ func _on_player_died() -> void:
 ## ---- world ----------------------------------------------------------------
 func _build_lighting() -> void:
 	var we := WorldEnvironment.new()
-	we.environment = RoomBase.make_night_environment(Color(0.1, 0.12, 0.2), Color(0.4, 0.44, 0.58), 1.0)
+	var env := RoomBase.make_night_environment(Color(0.1, 0.12, 0.2), Color(0.4, 0.44, 0.58), 1.0)
+	# Punchier bloom — toybox spectacle (Operation Chrome loading-screen energy).
+	if not Game.low_gfx():
+		env.glow_intensity = maxf(env.glow_intensity, 0.65)
+		env.glow_bloom = maxf(env.glow_bloom, 0.18)
+		env.tonemap_exposure = maxf(env.tonemap_exposure, 1.15)
+	we.environment = env
 	add_child(we)
 	add_light_rig(self, Vector3(-44, 130, 0), Color(0.68, 0.76, 1.0), 1.2)
 	# Porch floodlight: desktop only — Compatibility pays a full geometry pass.
@@ -135,6 +141,14 @@ func _build_lighting() -> void:
 		flood.rotation_degrees = Vector3(-40, -45, 0)
 		add_child(flood)
 		register_flicker(flood, 3.0, 0.8, 0.06)
+		# Warm fill opposite the flood — rim-lights plastic and explosions.
+		var rim := OmniLight3D.new()
+		rim.light_color = Color(1.0, 0.55, 0.35)
+		rim.light_energy = 1.8
+		rim.omni_range = arena_half * 0.9
+		rim.position = Vector3(arena_half * 0.35, 18, -arena_half * 0.2)
+		rim.shadow_enabled = false
+		add_child(rim)
 
 func _build_arena() -> void:
 	var s := arena_half

@@ -68,6 +68,23 @@ func _ring_dune() -> void:
 
 func _build_hold_marker() -> void:
 	add_prop("sign", Vector3(0, 0, -11), 0.0, 3.4)
+	# Glowing capture ring — the hill radius used to be invisible math.
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 11.2
+	tm.outer_radius = 11.7
+	tm.rings = 24 if Game.low_gfx() else 36
+	tm.ring_segments = 6
+	ring.mesh = tm
+	ring.material_override = ToyMaterials.glow(Color(1.0, 0.7, 0.25), 1.4)
+	ring.position = Vector3(0, 0.35, 0)
+	add_child(ring)
+	var omni := OmniLight3D.new()
+	omni.light_color = Color(1.0, 0.75, 0.3)
+	omni.light_energy = 2.8
+	omni.omni_range = 22.0
+	omni.position = Vector3(0, 6, 0)
+	add_child(omni)
 	_label = Label3D.new()
 	_label.text = "HOLD THE DUNE"
 	_label.font_size = 64
@@ -202,6 +219,7 @@ func _spawn_wave() -> void:
 	var count := mini(pack, room)
 	Events.notify.emit("CHROME WAVE %d — %d inbound!" % [_wave, count])
 	Sfx.play("shoot_heavy", -5.0, 0.4)
+	Fx.shake_camera(self, 0.22)
 	for i in count:
 		var ang := (TAU * float(i) / float(count)) + _wave * 0.35 + randf_range(-0.15, 0.15)
 		var r := arena_half * (0.78 if i % 2 == 0 else 0.68)
@@ -211,6 +229,7 @@ func _spawn_wave() -> void:
 			vname = "heavy"
 		if _wave >= 7 and i == 1:
 			vname = "juggernaut" if not Game.low_gfx() else "heavy"
+		Fx.ring_pulse(self, pos + Vector3.UP * 0.5, Color(0.95, 0.35, 0.25), 3.5, 0.4)
 		_spawn_rusher(pos, vname)
 	# Armor every few waves — keep pressure after the first tank dies.
 	if _wave == 3 or (_wave > 3 and _wave % 4 == 0):

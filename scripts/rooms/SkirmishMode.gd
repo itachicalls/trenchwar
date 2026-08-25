@@ -54,6 +54,9 @@ func _setup_mode() -> void:
 		if bot2 != null:
 			bot2.set_meta("skirmish_slot", slot)
 			_push_bot_into_fight(bot2, false)
+	_plant_base_beacon(_green_base(), Color(0.35, 0.85, 0.45))
+	_plant_base_beacon(_chrome_base(), Color(0.95, 0.35, 0.3))
+	Fx.ring_pulse(self, Vector3(0, 1, 0), Color(1.0, 0.85, 0.4), 8.0, 0.7)
 	_update_banner()
 	sub_banner.text = "3 NPCS / SIDE  •  3 LIVES EACH  •  3 PLAYER RESPAWNS"
 	spawn_weapon_drop(Vector3(0, 4.2, 0), "marble", 45.0)
@@ -68,6 +71,24 @@ func _setup_mode() -> void:
 	spawn_tank(Vector3(arena_half - 20, 1, 14), 180.0, "chrome_legion")
 	Pickup.spawn_fuel(self, Vector3(-8, 0, 10), 40)
 	Events.notify.emit("SKIRMISH VS: 3 squadmates each, 3 lives per NPC, 3 respawns for you. Wipe the other side!")
+
+func _plant_base_beacon(pos: Vector3, color: Color) -> void:
+	var pillar := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.35
+	cm.bottom_radius = 0.55
+	cm.height = 6.0
+	pillar.mesh = cm
+	pillar.material_override = ToyMaterials.glow(color, 1.6 if not Game.low_gfx() else 0.9)
+	pillar.position = pos + Vector3(0, 3.0, 0)
+	add_child(pillar)
+	if not Game.low_gfx():
+		var omni := OmniLight3D.new()
+		omni.light_color = color
+		omni.light_energy = 2.4
+		omni.omni_range = 16.0
+		omni.position = pos + Vector3(0, 5, 0)
+		add_child(omni)
 
 ## Kick bots out of idle patrol into the midfield immediately.
 func _push_bot_into_fight(bot: CombatBot, green: bool) -> void:

@@ -72,7 +72,7 @@ const MISSIONS := {
 	"plane_race": [
 		"PAPER PLANE RACE  —  Sky circuit",
 		preload("res://scripts/rooms/PlaneRaceMode.gd"),
-		"Bright backyard sky course — thread numbered tire hoops in order.\n\nOffline: beat the clock. Online: first pilot through every hoop wins.",
+		"Bright backyard sky course — wide glowing arches in order.\n\nW throttle, A/D turn, mouse pitches. Offline: beat the clock.\nOnline: first pilot through every gate wins.",
 	],
 	"hold_dune": [
 		"HOLD THE DUNE  —  King of the hill",
@@ -88,7 +88,7 @@ const TIPS := [
 	"TIP: The tank's cannon has splash damage — lead groups, not stragglers.",
 	"TIP: Lost toys glint gold. Five are hidden in every room.",
 	"TIP: Enemies call friends when they spot you. Pick off scouts from range.",
-	"TIP: Paper planes stall at low speed. Keep the throttle [W] pinned in turns.",
+	"TIP: Paper plane: A/D turns, mouse only pitches. Keep speed out of the red STALL zone.",
 	"TIP: Mini-Games live under GAME MODES — tank duel, hoop race, and Hold the Dune.",
 	"TIP: The Vacuum's armor is impervious. Shoot the green filter pods on its back.",
 	"TIP: Sprint [SHIFT] kicks up dust. Stealthy soldiers walk.",

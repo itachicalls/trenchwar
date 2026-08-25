@@ -80,6 +80,7 @@ func _setup_mode() -> void:
 		Pickup.spawn_fuel(self, Vector3(8, 0, 8), 60)
 		Pickup.spawn_fuel(self, Vector3(-14, 0, -10), 60)
 	_update_banner()
+	Fx.ring_pulse(self, Vector3(0, 1, 0), Color(0.4, 0.85, 1.0), 12.0, 0.8)
 	Events.notify.emit("RESURGENCE: keep one squadmate alive and the fallen return. Outlast every squad!")
 
 ## Translucent energy cylinder marking the safe zone edge.
@@ -92,11 +93,11 @@ func _build_zone_wall() -> void:
 	cyl.radial_segments = 16 if Game.low_gfx() else 48
 	_zone_wall.mesh = cyl
 	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.3, 0.75, 1.0, 0.12)
+	m.albedo_color = Color(0.3, 0.75, 1.0, 0.16)
 	m.emission_enabled = not Game.low_gfx()
 	if m.emission_enabled:
 		m.emission = Color(0.3, 0.75, 1.0)
-		m.emission_energy_multiplier = 1.2
+		m.emission_energy_multiplier = 1.8
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
