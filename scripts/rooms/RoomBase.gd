@@ -390,17 +390,90 @@ func landmark_top_local(rig: Node3D) -> float:
 
 ## Raycast down onto world geometry; returns Y for an object resting on the hit.
 ## Call after the node is inside the tree (prefer call_deferred).
-static func surface_y_at(world: World3D, xz: Vector3, hover: float = 0.05, probe_up: float = 28.0) -> float:
+## Pass exclude RIDs for the object being placed — otherwise the ray hits its
+## own collider and "snaps" it onto its own roof (floating barrels).
+static func surface_y_at(world: World3D, xz: Vector3, hover: float = 0.05,
+		probe_up: float = 28.0, exclude: Array[RID] = []) -> float:
 	if world == null:
 		return xz.y + hover
 	var from := Vector3(xz.x, xz.y + probe_up, xz.z)
 	var to := Vector3(xz.x, xz.y - 60.0, xz.z)
 	var q := PhysicsRayQueryParameters3D.create(from, to)
 	q.collision_mask = 0b0001
+	q.exclude = exclude
 	var hit := world.direct_space_state.intersect_ray(q)
 	if hit.is_empty():
 		return xz.y + hover
 	return hit.position.y + hover
+
+## Collect RIDs that a barrel snap must ignore (self + sibling fuel caches).
+func _barrel_floor_excludes(self_body: CollisionObject3D) -> Array[RID]:
+	var out: Array[RID] = [self_body.get_rid()]
+	for n in get_tree().get_nodes_in_group("explosive_barrels"):
+		if n is CollisionObject3D and is_instance_valid(n) and n != self_body:
+			out.append((n as CollisionObject3D).get_rid())
+	return out
+
+## Physics only exists after the tree is ready, so hand-placed barrels that
+## land inside a crate / bunker get a spiral of candidate spots until free.
+func _unstick_barrel(barrel: ExplosiveBarrel) -> void:
+	if barrel == null or not is_instance_valid(barrel):
+		return
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	if not is_instance_valid(barrel):
+		return
+	var world := get_world_3d()
+	if world == null:
+		return
+	var excludes := _barrel_floor_excludes(barrel)
+	var origin := barrel.global_position
+	if not _barrel_blocked_at(world, origin, barrel, excludes):
+		# Plant on the real floor — never on our own collision volume.
+		barrel.global_position.y = RoomBase.surface_y_at(world, origin, 0.02, 28.0, excludes)
+		barrel.set_meta("chrome_fuel_clear", true)
+		return
+	var radii: Array[float] = [2.5, 4.5, 7.0, 10.0, 14.0]
+	var angles := 8
+	for r in radii:
+		for i in angles:
+			var a: float = float(i) * TAU / float(angles) + r * 0.35
+			var cand := Vector3(origin.x + cos(a) * r, origin.y, origin.z + sin(a) * r)
+			cand.y = RoomBase.surface_y_at(world, cand, 0.02, 28.0, excludes)
+			if not _barrel_blocked_at(world, cand, barrel, excludes):
+				barrel.global_position = cand
+				barrel.set_meta("chrome_fuel_clear", true)
+				return
+	# Last resort: climb onto whatever is blocking, still excluding self.
+	var up := Vector3(origin.x, origin.y + 8.0, origin.z)
+	up.y = RoomBase.surface_y_at(world, up, 0.05, 28.0, excludes)
+	barrel.global_position = up
+	barrel.set_meta("chrome_fuel_clear", true)
+
+## True when a barrel would be buried in a prop/wall. Ignores the floor and
+## other fuel barrels so clustered caches don't shove each other into the sky.
+func _barrel_blocked_at(world: World3D, pos: Vector3, self_body: CollisionObject3D,
+		exclude: Array[RID] = []) -> bool:
+	var params := PhysicsShapeQueryParameters3D.new()
+	var sphere := SphereShape3D.new()
+	# Tight probe at mid-barrel height — wide enough to catch walls, short of
+	# the floor so grounded barrels aren't "blocked" by the carpet.
+	sphere.radius = 0.55
+	params.shape = sphere
+	params.transform = Transform3D(Basis(), pos + Vector3.UP * 1.0)
+	params.collision_mask = 0b0001
+	params.exclude = exclude if not exclude.is_empty() else [self_body.get_rid()]
+	for result in world.direct_space_state.intersect_shape(params, 6):
+		var col = result.get("collider")
+		if col == null or col == self_body:
+			continue
+		if col is Node and (col as Node).is_in_group("explosive_barrels"):
+			continue
+		# Floor slabs are huge and flat — skip near-horizontal faces by
+		# requiring the hit body to reach above our probe center.
+		if col is CollisionObject3D:
+			return true
+	return false
 
 ## Visual-only prop (no collision) — pillows, cushions, clutter that must not
 ## swallow the player when they land on the furniture deck underneath.
@@ -488,50 +561,6 @@ func add_barrel(pos: Vector3, yaw_deg: float = 0.0, target_size: float = 1.8, sp
 	barrel.rotation_degrees.y = yaw_deg
 	call_deferred("_unstick_barrel", barrel)
 	return barrel
-
-## Physics only exists after the tree is ready, so hand-placed barrels that
-## land inside a crate / bunker get a spiral of candidate spots until free.
-func _unstick_barrel(barrel: ExplosiveBarrel) -> void:
-	if barrel == null or not is_instance_valid(barrel):
-		return
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-	if not is_instance_valid(barrel):
-		return
-	var world := get_world_3d()
-	if world == null:
-		return
-	var origin := barrel.global_position
-	if not _barrel_blocked_at(world, origin, barrel):
-		# Still snap Y to the real floor so barrels don't float inside a deck.
-		barrel.global_position.y = RoomBase.surface_y_at(world, origin, 0.02)
-		barrel.set_meta("chrome_fuel_clear", true)
-		return
-	var radii: Array[float] = [2.5, 4.5, 7.0, 10.0, 14.0]
-	var angles := 8
-	for r in radii:
-		for i in angles:
-			var a: float = float(i) * TAU / float(angles) + r * 0.35
-			var cand := origin + Vector3(cos(a) * r, 0.0, sin(a) * r)
-			cand.y = RoomBase.surface_y_at(world, cand, 0.02)
-			if not _barrel_blocked_at(world, cand, barrel):
-				barrel.global_position = cand
-				barrel.set_meta("chrome_fuel_clear", true)
-				return
-	# Last resort: lift it onto the obstructing roof so it stays shootable.
-	barrel.global_position = Vector3(origin.x, origin.y + 6.0, origin.z)
-	barrel.global_position.y = RoomBase.surface_y_at(world, barrel.global_position, 0.05)
-	barrel.set_meta("chrome_fuel_clear", true)
-
-func _barrel_blocked_at(world: World3D, pos: Vector3, self_body: CollisionObject3D) -> bool:
-	var params := PhysicsShapeQueryParameters3D.new()
-	var sphere := SphereShape3D.new()
-	sphere.radius = 0.85
-	params.shape = sphere
-	params.transform = Transform3D(Basis(), pos + Vector3.UP * 0.9)
-	params.collision_mask = 0b0001
-	params.exclude = [self_body.get_rid()]
-	return not world.direct_space_state.intersect_shape(params, 4).is_empty()
 
 ## Extra Chrome fuel caches scattered across the walkable floor. Mission
 ## quotas stay the same — these are surplus so a barrel buried in geometry
